@@ -1,0 +1,1 @@
+{application,pi_dev_setup,[{modules,['Elixir.Mix.Tasks.PiDevSetup']},{optional_applications,[]},{applications,[kernel,stdlib,elixir]},{description,"Mix generator that adds Pi.dev AI sprint tooling to a Phoenix project"},{registered,[]},{vsn,"0.1.0"}]}.
