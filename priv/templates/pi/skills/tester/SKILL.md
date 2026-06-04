@@ -22,7 +22,19 @@ Load before working:
 - For each, write an ExUnit test stub in `/test/` mirroring `/lib/` structure.
 - Use idiomatic ExUnit: outer `describe "function_name/arity"`, one `test` per AC.
 - BDD phrasing in the test names (outcome-first, "when"/"if"/"for" clause). See § "BDD naming" below.
-- Prefer `@tag :pending` on stubbed tests rather than leaving them truly empty, so they show in reports but don't fail the suite before Builder has written code. (Remove the tag when filling the test in.)
+- Every stubbed test body **must contain only BDD-style comments** — no real code, no aliases to modules that don't exist yet, no context params. Use the format below. Do NOT write actual assertions, function calls, or variable bindings in planning stubs.
+
+  ```elixir
+  @tag :pending
+  test "returns {:ok, %Forecast{}} when attrs are valid" do
+    # Given valid attrs for a Forecast
+    # When executing the command
+    # Then the Forecast is created
+    # And its attributes are correct
+  end
+  ```
+
+- Use `@tag :pending` on every stub so tests show in reports but don't fail the suite before Builder has written code. Remove the tag when filling the test in during Gate 1.
 - Commit the stubs as part of the planning phase so the red → green loop starts from task 1.
 - **Expand `/docs/sprint/{name}/qa-script.md`** (started by PO) with edge cases the PO didn't surface:
   - Role / permission variants beyond the happy path
@@ -46,6 +58,32 @@ Load before working:
 
 Structure is idiomatic ExUnit. BDD phrasing lives in the test names, **not** in nested `describe` blocks.
 
+**Planning stubs** (comment-only bodies, no real code):
+
+```elixir
+defmodule StaffForecast.Forecasts.Commands.CreateForecastTest do
+  use StaffForecast.DataCase, async: true
+
+  describe "execute/2" do
+    @tag :pending
+    test "returns {:ok, %Forecast{}} when attrs are valid" do
+      # Given valid attrs for a Forecast
+      # When executing the command
+      # Then the Forecast is created
+    end
+
+    @tag :pending
+    test "returns {:error, %InvalidInput{}} when name is missing" do
+      # Given attrs with no name field
+      # When executing the command
+      # Then an InvalidInput error is returned
+    end
+  end
+end
+```
+
+**Gate 1 implementation** (filled in by Tester during dev, after Builder's code exists):
+
 ```elixir
 defmodule StaffForecast.Forecasts.Commands.CreateForecastTest do
   use StaffForecast.DataCase, async: true
@@ -68,6 +106,8 @@ defmodule StaffForecast.Forecasts.Commands.CreateForecastTest do
   end
 end
 ```
+
+> ⚠️ **During planning**: use stub format only. Do NOT add `alias` statements, context params (`%{ctx: ctx}`), or any real code — the modules being tested do not exist yet and will cause compilation failures.
 
 - Outer `describe` always `"function_name/arity"`. One `describe` per public function.
 - Test names are outcome-first sentences with a `when`/`if`/`for` clause.
