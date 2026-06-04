@@ -582,9 +582,11 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(
 				sha
 					? `Planning approved. Committed planning artifacts @ ${sha.slice(0, 7)}.\n` +
-					  `NEXT: subagent(pm) to write spec.md + plan.md and call sprint_tasks_seed. Do NOT start the dev loop yet.`
+					  `NEXT: subagent(pm) to write spec.md + plan.md and call sprint_tasks_seed.\n\n` +
+					  `👉 Reply "continue" to the orchestrator to proceed.`
 					: `Planning approved. (Nothing to commit.)\n` +
-					  `NEXT: subagent(pm) to write spec.md + plan.md and call sprint_tasks_seed. Do NOT start the dev loop yet.`,
+					  `NEXT: subagent(pm) to write spec.md + plan.md and call sprint_tasks_seed.\n\n` +
+					  `👉 Reply "continue" to the orchestrator to proceed.`,
 				"info",
 			);
 		},

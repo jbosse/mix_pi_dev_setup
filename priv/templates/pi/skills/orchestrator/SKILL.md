@@ -95,7 +95,10 @@ subagent(architect, "...")                          # writes architecture.md + r
 subagent(tester-planning, "...")                    # writes /test/ stubs + qa-script.md edge cases
 subagent(pm, "assemble planning-summary.md")       # writes planning-summary.md
 # ✋ STOP — show planning-summary.md to human; they read + sign off
-/sprint:approve-planning                           # human runs this — you wait
+# Tell the human: "Planning summary is ready. Review it, then run /sprint:approve-planning to commit and continue."
+/sprint:approve-planning                           # human runs this command in the Pi UI
+# ✋ WAIT — the command shows a notification. The human must reply "continue" (or any message) in the chat to resume.
+# When the human replies, immediately proceed:
 subagent(pm, "write spec.md + plan.md, then call sprint_tasks_seed")
 # phase is now `development`; begin dev flow
 ```
