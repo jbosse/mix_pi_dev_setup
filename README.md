@@ -57,6 +57,35 @@ Then follow the printed next steps:
 5. pi                      # start Pi and run /skill:orchestrator
 ```
 
+## Updating tooling in an existing project
+
+If you've already run `mix pi_dev_setup` and want to pull in updated agent,
+skill, chain, or extension files from a newer version of this archive:
+
+```bash
+# 1. upgrade the archive itself
+mix archive.install github jbosse/mix_pi_dev_setup --force
+
+# 2. update tooling files in your project
+mix pi_dev_update
+```
+
+Preview what would change without writing anything:
+
+```bash
+mix pi_dev_update --dry-run
+```
+
+Skip the confirmation prompt (useful in CI):
+
+```bash
+mix pi_dev_update --force
+```
+
+**Only pi tooling files are touched** — agents, skills, chains, and extension
+source. Your `docs/`, `SPEC.md`, `mix.exs`, `.pi/settings.json`, and static
+analysis configs are never modified.
+
 ## What gets generated
 
 ```
