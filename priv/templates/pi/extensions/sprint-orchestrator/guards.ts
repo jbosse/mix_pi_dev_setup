@@ -70,11 +70,25 @@ export function installBashGitGuard(pi: ExtensionAPI): void {
  * the entry already ended in "/" — so trailing-slash prefixes silently failed
  * to match. This helper normalises so PM's "priv/repo/migrations/" notation
  * (the documented convention) works.
+ *
+ * Also handles the reverse case: git reports an untracked *parent directory*
+ * (e.g. `lib/foo/adapters/`) as the dirty item when files are newly created
+ * inside a directory git hasn't seen before. In that case `path` is a
+ * directory prefix of `entry` — treat it as covered so the ownership check
+ * doesn't false-negative on brand-new subdirectories.
  */
 export function pathOwnedBy(path: string, entry: string): boolean {
 	if (path === entry) return true;
-	const prefix = entry.endsWith("/") ? entry : `${entry}/`;
-	return path.startsWith(prefix);
+	// Standard case: declared entry is a prefix of the dirty path.
+	const entryPrefix = entry.endsWith("/") ? entry : `${entry}/`;
+	if (path.startsWith(entryPrefix)) return true;
+	// Reverse case: the dirty item is a parent directory of a declared file.
+	// git shows "lib/foo/adapters/" (with trailing slash) when all files inside
+	// are untracked. Normalise the dirty path to a directory prefix and check
+	// whether any declared file lives under it.
+	const pathPrefix = path.endsWith("/") ? path : `${path}/`;
+	if (entry.startsWith(pathPrefix)) return true;
+	return false;
 }
 
 /**

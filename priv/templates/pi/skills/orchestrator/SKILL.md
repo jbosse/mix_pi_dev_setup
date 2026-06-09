@@ -41,6 +41,7 @@ Every `*`-marked step in ORCHESTRATION.md goes through the `sprint-orchestrator`
 | Advance a task on PASS (only when the subagent did not self-advance) | `sprint_state_transition` |
 | Log narrative | `task_log_append` (agent=`orchestrator`) |
 | Record FAIL + strike (only when a subagent crashed before calling it itself) | `strike_record` |
+| Unhalt sprint after a human-approved fix | `sprint_state_unhalt` |
 | Run Gate 4 | `verify_run` |
 | Commit | `commit_task` |
 | Final merge | `sprint_merge` (via `/sprint:approve-close`) |
@@ -148,7 +149,8 @@ On each retry, relaunch **only the failed step**, not the whole chain. Read the 
 
 - **Strike 1–2**: relaunch `subagent(builder, "<feedback from log>")`, then re-run the rest of the chain.
 - **Strike 3**: run `subagent(architect, "escalation mode: task {id} failed 3 times. Read the task log and diff. Return a short directive for Builder.")`, then relaunch builder with that directive.
-- **Strike 4**: `strike_record` auto-sets `state.halted`. Surface logs + diff to human. **Stop routing.**
+- **Strike 4**: `strike_record` auto-sets `state.halted` with `source: "strike-4"`. Surface logs + diff to human. **Stop routing.**
+  Once the human approves a fix, call `sprint_state_unhalt(reason: "<what was fixed>")`. This clears the halt and resets the in-flight task to builder (strikes cleared) so you can re-run the gate chain without touching `sprint-state.json` manually.
 
 ## Final review + polish chat
 

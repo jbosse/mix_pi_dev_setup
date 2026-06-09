@@ -115,10 +115,18 @@ export async function commitPlanning(
 
 // Does `path` fall under an ownership entry? Duplicated from guards.ts
 // deliberately — git.ts shouldn't import guards (one-way dependency).
+// Bidirectional: also matches when the dirty item is a parent *directory*
+// of a declared file (git reports untracked directories, not their contents,
+// when an entire new subdirectory is being created for the first time).
 function ownedBy(path: string, entry: string): boolean {
 	if (path === entry) return true;
-	const prefix = entry.endsWith("/") ? entry : `${entry}/`;
-	return path.startsWith(prefix);
+	// Standard: declared entry is a prefix of the dirty path.
+	const entryPrefix = entry.endsWith("/") ? entry : `${entry}/`;
+	if (path.startsWith(entryPrefix)) return true;
+	// Reverse: dirty item is a parent directory of the declared file.
+	const pathPrefix = path.endsWith("/") ? path : `${path}/`;
+	if (entry.startsWith(pathPrefix)) return true;
+	return false;
 }
 
 /**

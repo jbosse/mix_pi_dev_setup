@@ -377,6 +377,7 @@ export default function (pi: ExtensionAPI) {
 				state.halted = {
 					reason: `task ${task.id} reached strike 4 at gate ${params.gate}: ${params.reason}`,
 					at: new Date().toISOString(),
+					source: "strike-4",
 				};
 				halted = true;
 				console.error(`[sprint] HALT: ${state.halted.reason}`);
@@ -395,6 +396,71 @@ export default function (pi: ExtensionAPI) {
 					},
 				],
 				details: { strikes, halted },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "sprint_state_unhalt",
+		label: "Sprint state unhalt",
+		description:
+			"Clear the halted flag so the sprint can resume. " +
+			"Use after a human-approved fix resolves the blocking issue. " +
+			"Requires a non-empty reason describing what was fixed and who approved it. " +
+			"If haltSource is 'strike-4', also resets the in-flight task's strike counter and gate back to 'builder' " +
+			"so it re-enters the gate chain cleanly (the human approved a direct fix). " +
+			"If haltSource is 'manual', only clears the flag — no task state is touched.",
+		parameters: Type.Object({
+			reason: Type.String({ description: "What was fixed and who approved it (required, non-empty)" }),
+			resetTask: Type.Optional(Type.Boolean({
+				description:
+					"When true (default for strike-4 halts): reset the in-flight task's strikes/gate back to builder. " +
+					"Set false only when the human-approved fix already advanced the task past the failing gate.",
+			})),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const { state, paths } = requireActive(ctx.cwd);
+			if (!state.halted) {
+				throw new Error("sprint is not halted — nothing to unhalt");
+			}
+			const reason = (params.reason as string).trim();
+			if (!reason) {
+				throw new Error("sprint_state_unhalt requires a non-empty reason describing the fix and who approved it");
+			}
+			const haltSource = state.halted.source ?? "manual";
+			const shouldResetTask = (params.resetTask as boolean | undefined) ?? (haltSource === "strike-4");
+
+			let taskReset: string | undefined;
+			if (shouldResetTask) {
+				// Find the in-flight task (the one that triggered the halt) and reset
+				// it so the orchestrator can re-run the gate chain from builder.
+				const inFlight = state.tasks.find((t) => t.gate !== "done");
+				if (inFlight) {
+					inFlight.gate = "builder";
+					inFlight.gates = {};
+					// Reset strike counter so we don't immediately re-halt.
+					inFlight.attempts = 0;
+					inFlight.strikes = [];
+					taskReset = inFlight.id;
+				}
+			}
+
+			delete state.halted;
+			saveState(paths, state);
+			appendSprintLog(paths, `unhalt: ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
+
+			return {
+				content: [
+					{
+						type: "text",
+						text:
+							`Sprint unhalted. Reason: ${reason}.` +
+							(taskReset
+								? `\nTask ${taskReset} reset to builder gate (strikes cleared).\nRe-run the gate chain: subagent({ chain: "task-gates", task: "${taskReset}" })`
+								: `\nNo task state was changed. Resume the sprint where it left off.`),
+					},
+				],
+				details: { haltSource, taskReset: taskReset ?? null },
 			};
 		},
 	});
@@ -688,11 +754,46 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("sprint:halt", {
+	pi.registerCommand("sprint:unhalt", {
+		description: "Clear the halted flag after a human-approved fix. Pass a brief description of what was fixed.",
+		handler: async (args, ctx) => {
+			const { state, paths } = requireActive(ctx.cwd);
+			if (!state.halted) {
+				ctx.ui.notify("Sprint is not halted.", "warning");
+				return;
+			}
+			const reason = (args || "").trim();
+			if (!reason) {
+				ctx.ui.notify("Usage: /sprint:unhalt <what was fixed>. A reason is required.", "error");
+				return;
+			}
+			const haltSource = state.halted.source ?? "manual";
+			const shouldResetTask = haltSource === "strike-4";
+			let taskReset: string | undefined;
+			if (shouldResetTask) {
+				const inFlight = state.tasks.find((t) => t.gate !== "done");
+				if (inFlight) {
+					inFlight.gate = "builder";
+					inFlight.gates = {};
+					inFlight.attempts = 0;
+					inFlight.strikes = [];
+					taskReset = inFlight.id;
+				}
+			}
+			delete state.halted;
+			saveState(paths, state);
+			appendSprintLog(paths, `unhalt (command): ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
+			ctx.ui.notify(
+				`Sprint unhalted.${taskReset ? ` Task ${taskReset} reset to builder — re-run the gate chain.` : ""} Reason: ${reason}`,
+				"info",
+			);
+		},
+	});
+
 		description: "Manually halt the sprint (equivalent to strike 4)",
 		handler: async (args, ctx) => {
 			const { state, paths } = requireActive(ctx.cwd);
-			state.halted = { reason: args || "manual halt", at: new Date().toISOString() };
+			state.halted = { reason: args || "manual halt", at: new Date().toISOString(), source: "manual" };
 			saveState(paths, state);
 			appendSprintLog(paths, `manual HALT: ${state.halted.reason}`);
 			console.error(`[sprint] HALT: ${state.halted.reason}`);

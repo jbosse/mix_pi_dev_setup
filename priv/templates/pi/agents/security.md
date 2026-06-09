@@ -7,6 +7,7 @@ inheritSkills: false
 defaultContext: fresh
 maxSubagentDepth: 1
 tools: read, grep, find, ls, task_log_append, sprint_state_transition, strike_record
+completionGuard: false
 skills: security, styleguide-check
 ---
 

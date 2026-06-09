@@ -50,7 +50,7 @@ export interface SprintState {
 	phase: Phase;
 	createdAt: string;
 	tasks: TaskState[];
-	halted?: { reason: string; at: string };
+	halted?: { reason: string; at: string; source?: "strike-4" | "manual" };
 	// When a polish task is appended during final-review, we remember the phase
 	// we came from so we can flip back once the polish task is committed.
 	polishReturnPhase?: Phase;
