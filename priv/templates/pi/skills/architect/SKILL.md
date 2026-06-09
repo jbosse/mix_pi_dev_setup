@@ -29,6 +29,7 @@ Outputs:
   - Cross-context integration scenarios (external service down / partial response)
   - Migration / backfill behavior if the sprint introduces schema changes
   Tag each new Scenario using the PO taxonomy (`[PO: edge]` / `[PO: sad]`). Match the PO-skill formatting: each `Given` / `When` / `Then` / `And` step is a Markdown numbered bullet (`1. ` prefix).
+  **QA audience rule**: every scenario you add must be executable by a QA team member in the deployed app's UI — no DB access, no `iex`, no shell commands. Preconditions describe UI or app state; `Then` steps describe what the user sees. If a scenario (e.g., a background job enqueued, a distributed lock released) is genuinely only verifiable server-side, place it in the `## DEV ONLY scenarios` section with a written justification and tag it `[DEV ONLY]`. Before marking DEV ONLY, consider whether the outcome could be surfaced in an admin panel, an audit log page, or a status indicator in the UI — if it can, design it that way and note it in architecture.md instead.
 - New ADRs in `/docs/adr/NNN-title.md` when a decision spans multiple files or sprints.
 - Ecto schema / migration plan if schema changes.
 

@@ -53,7 +53,7 @@ Then call `strike_record(taskId, "reviewer", "<summary of findings>")`. Attach f
 - **Config**: `System.get_env/1` only in `runtime.exs`; `Application.get_env/2` only in the app's config module; no secret literals.
 - **Patterns**: no GoF without ADR; no Singleton; composition over `use` inheritance.
 - **Testing**: idiomatic `describe "func/arity"` + BDD test names; 1 AC ↔ 1 test; happy + sad path per Command; integration test per Command; fakes / Mox only.
-- **QA script coherence** (soft, Reviewer judgment): if the task changes observable behavior, `/docs/sprint/{name}/qa-script.md` has been updated to match. Pure refactors are exempt.
+- **QA script coherence**: if the task changes observable behavior, `/docs/sprint/{name}/qa-script.md` has been updated to match. Pure refactors are exempt. Also check that no scenario (new or existing) contains developer-only steps (DB access, `iex`, shell commands, log inspection) outside the `## DEV ONLY scenarios` section; flag any that do.
 - **Hygiene**: no `IO.inspect`, no `dbg/1`, no `@tag :skip` / `@tag :focus`, no commented-out code, ownership respected.
 
 ## Required tool calls

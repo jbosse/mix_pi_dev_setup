@@ -43,6 +43,7 @@ Load before working:
   - Idempotency checks (re-submit same action, re-run same operation)
   - Data-visibility variants (user scoping, soft-deleted rows)
   Tag each new Scenario `[PO: edge]`, `[PO: sad]`, or `[PO: authz]` per the taxonomy in the PO skill. Do NOT invent new tags. Match the PO-skill formatting: each `Given` / `When` / `Then` / `And` step is a Markdown numbered bullet (`1. ` prefix). No handwritten sign-off line.
+  **QA audience rule**: every scenario you add must be executable by a QA team member in the deployed app's UI — no DB access, no `iex`, no shell commands, no log inspection. Preconditions describe UI state; `Then` steps describe what the user sees. If a scenario is genuinely only verifiable server-side, place it in the `## DEV ONLY scenarios` section with a written reason and tag it `[DEV ONLY]`. Prefer surfacing the result in the UI over marking DEV ONLY.
 - Every AC appears in **three places**: one `test` (ExUnit), one `Scenario:` in `qa-script.md`, one AC line in `user-stories.md`. Reviewer verifies the 1:1:1 mapping at Gate 2.
 - **Before returning, run `mix precommit` and ensure it passes.** Fix any failures (formatting, compilation, credo, dialyzer). `@tag :pending` tests won't fail the suite, but malformed stubs will — fix those before declaring done.
 
