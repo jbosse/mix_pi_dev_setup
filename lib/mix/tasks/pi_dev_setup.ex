@@ -1,6 +1,6 @@
 defmodule Mix.Tasks.PiDevSetup do
   use Mix.Task
-
+  import Bitwise, only: [bor: 2]
   @shortdoc "Adds Pi.dev AI sprint tooling to a Phoenix project"
 
   @moduledoc """
@@ -10,6 +10,7 @@ defmodule Mix.Tasks.PiDevSetup do
     - `.pi/` — Pi configuration, agents, chains, skills, and the sprint-orchestrator extension
     - `docs/` — living architecture, styleguide, glossary, orchestration, and project-memory docs
     - `SPEC.md` — product specification scaffold
+    - `spawn-agent` / `remove-agent` — worktree lifecycle scripts for running parallel Pi sessions
     - `.credo.exs`, `.dialyzer_ignore.exs`, `.sobelow-conf` — static analysis config
 
   Patches `mix.exs`:
@@ -33,7 +34,9 @@ defmodule Mix.Tasks.PiDevSetup do
   1. `mix deps.get` — fetch the new tooling deps
   2. `mkdir -p priv/plts` — create the Dialyzer PLT cache directory
   3. `pi install npm:pi-subagents` — install the subagents package for Pi
-  4. Start Pi and run `/skill:orchestrator` to kick off your first sprint
+  4. Add `export PI_CMD="..."` to your `.env.local` (see `spawn-agent` usage)
+  5. `chmod +x spawn-agent remove-agent` — make the scripts executable
+  6. Start Pi and run `/skill:orchestrator` to kick off your first sprint
   """
 
   @impl Mix.Task
@@ -97,7 +100,10 @@ defmodule Mix.Tasks.PiDevSetup do
       Mix.Generator.create_file(dest, content)
     end)
 
-    # ── 4. Create Dialyzer PLT directory ─────────────────────────────────
+    # ── 4. Make scripts executable ──────────────────────────────────────
+    make_executable(["spawn-agent", "remove-agent"])
+
+    # ── 5. Create Dialyzer PLT directory ─────────────────────────────────
     create_plts_dir()
 
     # ── 5. Patch mix.exs ──────────────────────────────────────────────────
@@ -113,7 +119,9 @@ defmodule Mix.Tasks.PiDevSetup do
       3.  Review .pi/extensions/sprint-orchestrator/tsconfig.json
           and update the @mariozechner/pi-coding-agent path if needed
       4.  Add priv/plts/ to .gitignore (or commit the .gitkeep)
-      5.  pi                      # start Pi and run /skill:orchestrator
+      5.  Add `export PI_CMD="..."` to .env.local (your full pi invocation)
+      6.  chmod +x spawn-agent remove-agent
+      7.  pi                      # start Pi and run /skill:orchestrator
     """)
   end
 
@@ -181,7 +189,11 @@ defmodule Mix.Tasks.PiDevSetup do
       {"docs/architecture.md", "docs/architecture.md"},
       {"docs/glossary.md", "docs/glossary.md"},
       {"docs/project_memory.md", "docs/project_memory.md"},
-      {"docs/styleguide.md", "docs/styleguide.md"}
+      {"docs/styleguide.md", "docs/styleguide.md"},
+
+      # Worktree lifecycle scripts (repo root)
+      {"spawn-agent", "spawn-agent"},
+      {"remove-agent", "remove-agent"}
     ]
   end
 
@@ -330,6 +342,16 @@ defmodule Mix.Tasks.PiDevSetup do
         content
       end
     end
+  end
+
+  defp make_executable(paths) do
+    Enum.each(paths, fn path ->
+      if File.exists?(path) do
+        current = File.stat!(path).mode
+        # Add owner+group+other execute bits (0o111)
+        File.chmod!(path, bor(current, 0o111))
+      end
+    end)
   end
 
   defp create_plts_dir do

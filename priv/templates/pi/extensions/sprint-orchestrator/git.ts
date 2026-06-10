@@ -41,9 +41,18 @@ export async function branchExists(pi: ExtensionAPI, branch: string): Promise<bo
 /**
  * Create (or switch to, if exists) the sprint branch. Idempotent so restart
  * after a crash mid-planning does the right thing.
+ *
+ * When Pi is launched inside a git worktree that already has the branch
+ * checked out, `git checkout` would fail because the branch is already
+ * current (or is checked out in another worktree). Guard against both cases
+ * by checking HEAD first and returning early if we're already on it.
  */
 export async function startSprintBranch(pi: ExtensionAPI, branch: string): Promise<void> {
 	return authorized(async () => {
+		// Already on this branch (e.g. launched inside a pre-created worktree).
+		const head = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+		if (head.stdout.trim() === branch) return;
+
 		if (await branchExists(pi, branch)) {
 			const { code, stderr } = await pi.exec("git", ["checkout", branch]);
 			if (code !== 0) throw new Error(`git checkout ${branch} failed: ${stderr}`);

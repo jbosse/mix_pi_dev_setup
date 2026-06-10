@@ -1,6 +1,6 @@
 defmodule Mix.Tasks.PiDevUpdate do
   use Mix.Task
-
+  import Bitwise, only: [bor: 2]
   @shortdoc "Updates Pi.dev agent/skill/chain/extension files to the latest templates"
 
   @moduledoc """
@@ -15,6 +15,7 @@ defmodule Mix.Tasks.PiDevUpdate do
     - `.pi/chains/*.md`       — chain definitions
     - `.pi/skills/*/SKILL.md` — skill instructions
     - `.pi/extensions/sprint-orchestrator/**` — extension source
+    - `spawn-agent` / `remove-agent` — worktree lifecycle scripts
 
   ## Files intentionally skipped
 
@@ -151,6 +152,9 @@ defmodule Mix.Tasks.PiDevUpdate do
     Enum.each(created, &Mix.shell().info([:cyan, "* created  ", :reset, &1]))
     Enum.each(unchanged, &Mix.shell().info([:light_black, "* no change", :reset, " #{&1}"]))
 
+    # Ensure scripts are executable whether newly created or updated
+    make_executable(["spawn-agent", "remove-agent"])
+
     Mix.shell().info("""
 
     ✅  Pi.dev tooling updated for #{app_module}.
@@ -158,6 +162,17 @@ defmodule Mix.Tasks.PiDevUpdate do
 
     Restart Pi to pick up the new agent/skill/chain definitions.
     """)
+  end
+
+  # ── Make scripts executable ────────────────────────────────────────────
+
+  defp make_executable(paths) do
+    Enum.each(paths, fn path ->
+      if File.exists?(path) do
+        current = File.stat!(path).mode
+        File.chmod!(path, bor(current, 0o111))
+      end
+    end)
   end
 
   # ── Substitution ─────────────────────────────────────────────────────────
@@ -214,7 +229,11 @@ defmodule Mix.Tasks.PiDevUpdate do
       {"pi/extensions/sprint-orchestrator/tsconfig.json",
        ".pi/extensions/sprint-orchestrator/tsconfig.json"},
       {"pi/extensions/sprint-orchestrator/verify.ts",
-       ".pi/extensions/sprint-orchestrator/verify.ts"}
+       ".pi/extensions/sprint-orchestrator/verify.ts"},
+
+      # Worktree lifecycle scripts (repo root)
+      {"spawn-agent", "spawn-agent"},
+      {"remove-agent", "remove-agent"}
     ]
   end
 end
