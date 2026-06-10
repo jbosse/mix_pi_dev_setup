@@ -62,6 +62,7 @@ export interface CommitInput {
 	storyRef: string;
 	gateSummary: string; // e.g. "Builder: ✅  Tester: ✅  ..."
 	files: string[]; // declared file ownership — `git add` scope
+	caseNumber?: string; // optional case/ticket number appended as the last line of the body
 }
 
 /**
@@ -169,7 +170,8 @@ export async function commitTask(pi: ExtensionAPI, input: CommitInput): Promise<
 		const msg =
 			`[sprint/${input.sprintName}] ${input.taskId}: ${input.title}\n\n` +
 			`${input.storyRef}\n` +
-			`${input.gateSummary}\n`;
+			`${input.gateSummary}\n` +
+			(input.caseNumber ? `\n${input.caseNumber}\n` : "");
 
 		const commit = await pi.exec("git", ["commit", "-m", msg]);
 		if (commit.code !== 0) throw new Error(`git commit failed: ${commit.stderr}`);

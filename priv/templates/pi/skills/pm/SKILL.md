@@ -28,7 +28,11 @@ Outputs:
 Proposals (not auto-commits):
 - Targeted update to `/docs/architecture.md` — only sections the sprint changed. Preserve the rest.
 - Append to `/docs/project_memory.md` — newest sprint on top. Fields: goal, what shipped, key decisions, gotchas, link to sprint dir.
-- Update `CHANGELOG.md` — append one line inside the **version block marked "Not yet released"** under the correct section heading. Create the heading if it does not yet exist in that block; do NOT create a new version block. Format: `- {sprint-number} - {short user-facing description}`.
+- Update `CHANGELOG.md` — append one line inside the **version block marked "Not yet released"** under the correct section heading. Create the heading if it does not yet exist in that block; do NOT create a new version block. Format:
+  - **With a case number** (read from `sprint-state.json` → `caseNumber` field): `- {caseNumber} - {short user-facing description}` (e.g. `- 64123 - Add sort-order preference to reports`).
+  - **Without a case number**: `- {sprint-number} - {short user-facing description}` where `{sprint-number}` is the leading numeric portion of the sprint name, or the full sprint name if it contains no leading number.
+
+  Either way, keep the description concise, user-facing, and in plain English — no ticket URLs, no implementation detail.
 
   Choose the section by the nature of the sprint's primary change:
 

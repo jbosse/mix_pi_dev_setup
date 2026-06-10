@@ -88,7 +88,7 @@ The `task-gates` chain lives at `/.pi/chains/task-gates.chain.md` and runs `buil
 
 ```
 [read /.pi/skills/planning-interview/SKILL.md and follow it]  # YOU do this, in the parent — NOT a subagent
-sprint_start(name, goal, interviewConfirmed: true)  # tooling* — REFUSES unless interviewConfirmed=true
+sprint_start(name, goal, interviewConfirmed: true, caseNumber?)  # tooling* — REFUSES unless interviewConfirmed=true
 subagent(product-owner, "mode 1: user stories")    # writes user-stories.md ONLY
 # ✋ STOP — show user-stories.md to human for approval (see "User Story Approval" below)
 subagent(product-owner, "mode 2: qa-script")       # writes qa-script.md skeleton (uses approved stories)

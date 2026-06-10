@@ -49,6 +49,7 @@ export interface SprintState {
 	branch: string; // sprint/{name}
 	phase: Phase;
 	createdAt: string;
+	caseNumber?: string; // optional case/ticket number, e.g. "64123"
 	tasks: TaskState[];
 	halted?: { reason: string; at: string; source?: "strike-4" | "manual" };
 	// When a polish task is appended during final-review, we remember the phase

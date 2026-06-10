@@ -1,6 +1,6 @@
 ---
 name: planning-interview
-description: Collaborative discovery session the Orchestrator runs with the human at sprint start. Explores intent, constraints, and success criteria through adaptive questioning — enough for Product Owner to write user stories without follow-up.
+description: Collaborative discovery session the Orchestrator runs with the human at sprint start. Explores intent, constraints, and success criteria through adaptive questioning - enough for Product Owner to write user stories without follow-up.
 ---
 
 # 🎤 Planning Interview skill
@@ -8,7 +8,7 @@ description: Collaborative discovery session the Orchestrator runs with the huma
 Help the human turn a rough idea into a well-understood sprint scope through natural collaborative dialogue. Your goal is to extract enough context, constraints, and success criteria that the Product Owner can write user stories without needing to ask the human anything else.
 
 <HARD-GATE>
-## ONE QUESTION PER MESSAGE — NO EXCEPTIONS
+## ONE QUESTION PER MESSAGE - NO EXCEPTIONS
 
 Every message you send to the human contains EXACTLY ONE question. Not two. Not "a quick follow-up." Not "and also." ONE.
 
@@ -23,11 +23,11 @@ Do NOT hand off to any downstream agent until you have summarized the sprint sco
 
 ## Anti-Pattern: "This Is Too Simple To Need Exploration"
 
-Every sprint goes through this process. A one-file change, a config tweak, a small feature — all of them. "Simple" sprints are where unexamined assumptions cause the most rework. The interview can be brief for truly simple work, but you MUST confirm understanding before wrapping up.
+Every sprint goes through this process. A one-file change, a config tweak, a small feature - all of them. "Simple" sprints are where unexamined assumptions cause the most rework. The interview can be brief for truly simple work, but you MUST confirm understanding before wrapping up.
 
 ## Process
 
-### 1. Explore project context (silent — no message to human yet)
+### 1. Explore project context (silent - no message to human yet)
 
 Before asking anything, look at:
 
@@ -41,12 +41,12 @@ This grounds your questions in reality rather than abstraction.
 
 Show the human you've oriented yourself ("I see we just landed X and the codebase currently Y..."), then ask your first question. ONE question. End the message.
 
-### 3. Ask clarifying questions — ONE AT A TIME, adaptive
+### 3. Ask clarifying questions - ONE AT A TIME, adaptive
 
 **THE RULE: One question per message. Period.**
 
 - Send your question. Stop. Wait for the answer. Then ask the next one.
-- Prefer multiple choice when possible — easier to answer than open-ended.
+- Prefer multiple choice when possible - easier to answer than open-ended.
 - Adapt based on answers. Don't follow a rigid script. If an answer reveals complexity, dig deeper. If the scope is clear, move on.
 - Focus on: purpose, constraints, success criteria, edge cases, what's explicitly out of scope.
 
@@ -58,18 +58,19 @@ Show the human you've oriented yourself ("I see we just landed X and the codebas
 
 Then wait. Then ask the next question in a new message.
 
-**Topics to cover** (not necessarily in this order — adapt to the conversation):
+**Topics to cover** (not necessarily in this order - adapt to the conversation):
 
 | Topic | Why it matters |
 |-------|---------------|
-| Sprint goal | One sentence — what does this sprint ship? |
-| Sprint name | Kebab-case, becomes `sprint/{name}` |
+| Sprint goal | One sentence - what does this sprint ship? |
+| Case / ticket number | Optional. If the work is tracked in an external system (Jira, Linear, GitHub issue, etc.), the number is appended to every commit and becomes the leading token in the PR title. Ask: "Is there a case or ticket number for this work? (e.g. 64123, or \"none\")" |
+| Sprint name | Kebab-case slug for the sprint, **without** the case number - the tool prefixes it automatically (e.g. \"fix-sorting\" → \"64123-fix-sorting\") |
 | User-facing behavior | What does the human/end-user actually experience when this works? |
 | Scope guardrails | What is explicitly out of scope? |
 | Success criteria | How do we know it's done? What would "wrong" look like? |
 | Known risks / prior art | Related sprints, ADRs, pain points? |
 | Technical constraints | Performance budgets, compatibility, migration concerns? |
-| Verification pipeline | Default is `mix precommit` — add or remove steps? |
+| Verification pipeline | Default is `mix precommit` - add or remove steps? |
 
 You don't need to ask about every topic. Some will be obvious from context or from earlier answers. Stop when you're confident PO has enough to work with.
 
@@ -79,8 +80,8 @@ If the idea is ambiguous or could be scoped multiple ways, propose 2-3 approache
 
 Example:
 > "I can see two ways to scope this:
-> A) Minimal — just the happy path, ship in ~3 tasks
-> B) Full — happy path + error handling + edge cases, ~6 tasks
+> A) Minimal - just the happy path, ship in ~3 tasks
+> B) Full - happy path + error handling + edge cases, ~6 tasks
 > I'd recommend A because [reason]. Which feels right?"
 
 Skip this step if scope is already clear from the conversation.
@@ -90,7 +91,8 @@ Skip this step if scope is already clear from the conversation.
 Once you believe you understand the sprint scope, present a brief summary:
 
 - Sprint goal (one sentence)
-- Sprint name
+- Case / ticket number (or "none")
+- Sprint name (kebab-case slug only, without case number prefix)
 - Key behaviors / acceptance themes (bullet points — NOT user stories)
 - Out of scope
 - Verification pipeline (only mention if changed from default)
@@ -102,13 +104,13 @@ Do NOT proceed until the human confirms.
 
 ### 6. Hand off
 
-- Write the confirmed summary to `/docs/sprint/{name}/planning-summary.md` under a `## Interview` section.
-- Return control to the parent Orchestrator. The parent runs `sprint_start(name, goal)` next.
+- Write the confirmed summary to `/docs/sprint/{name}/planning-summary.md` under a `## Interview` section. Include the case number (or note "none") so downstream agents don't need to re-derive it.
+- Return control to the parent Orchestrator. The parent runs `sprint_start(name, goal, caseNumber)` next (pass `caseNumber` only when one was given; omit or pass empty string when none).
 
 ## Do not
 
 - Propose user stories (that's PO).
 - Propose architecture (that's Architect).
-- Edit `sprint-state.json` — `sprint_start` does that.
+- Edit `sprint-state.json` - `sprint_start` does that.
 - Ask more than one question per message. EVER.
 - Proceed to hand-off without human confirming the summary.
