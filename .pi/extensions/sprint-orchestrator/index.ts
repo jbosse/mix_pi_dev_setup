@@ -158,28 +158,20 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Create sprint/{name} branch, scaffold /docs/sprint/{name}/, init sprint-state.json. " +
 			"Requires interviewConfirmed=true — the planning interview MUST complete and receive human " +
-			"confirmation before this tool is called. Refuses otherwise. " +
-			"If a caseNumber is provided, the sprint name is prefixed with it (e.g. caseNumber=64123 + name=fix-sorting → 64123-fix-sorting).",
+			"confirmation before this tool is called. Refuses otherwise.",
 		parameters: Type.Object({
-			name: Type.String({ description: "Sprint name (kebab-case, without case number prefix — the tool adds the prefix)" }),
+			name: Type.String({ description: "Sprint name (kebab-case)" }),
 			goal: Type.String({ description: "One-line sprint goal" }),
 			interviewConfirmed: Type.Boolean({
 				description:
 					"MUST be true. Set only after /skill:planning-interview has run and the human confirmed the scope summary. " +
 					"If you have not run the planning interview, you MUST do so before calling this tool.",
 			}),
-			caseNumber: Type.Optional(Type.String({
-				description:
-					"Optional case/ticket number (digits only, e.g. \"64123\"). When provided, prefixes the sprint name " +
-					"(e.g. \"64123-fix-sorting\"), is appended as the last line of every task commit message, " +
-					"and becomes the leading token in the PR title.",
-			})),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const rawName = params.name as string;
+			const name = params.name as string;
 			const goal = params.goal as string;
 			const confirmed = params.interviewConfirmed as boolean;
-			const caseNumber = ((params.caseNumber as string | undefined) ?? "").trim() || undefined;
 			if (!confirmed) {
 				throw new Error(
 					"sprint_start refused: interviewConfirmed is false. " +
@@ -187,8 +179,6 @@ export default function (pi: ExtensionAPI) {
 					"This is non-negotiable — see ORCHESTRATION.md § Planning Phase.",
 				);
 			}
-			// Prefix the sprint name with the case number if one was provided.
-			const name = caseNumber ? `${caseNumber}-${rawName}` : rawName;
 			const paths = sprintPaths(ctx.cwd, name);
 			ensureSprintDirs(paths);
 			await startSprintBranch(pi, `sprint/${name}`);
@@ -198,21 +188,19 @@ export default function (pi: ExtensionAPI) {
 					branch: `sprint/${name}`,
 					phase: "planning",
 					createdAt: new Date().toISOString(),
-					...(caseNumber ? { caseNumber } : {}),
 					tasks: [],
 				};
 				saveState(paths, state);
 				writeFileSync(paths.sprintLog, `# Sprint: ${name}\nGoal: ${goal}\n`);
 			}
 			ACTIVE_SPRINT = name;
-			appendSprintLog(paths, `sprint_start name=${name}${caseNumber ? ` caseNumber=${caseNumber}` : ""}`);
+			appendSprintLog(paths, `sprint_start name=${name}`);
 			return {
 				content: [{
 					type: "text",
 					text:
-						`Sprint ${name} ready on branch sprint/${name}. Phase: planning.` +
-						(caseNumber ? `\nCase number: ${caseNumber} (will be appended to every commit and the PR title).` : "") +
-						`\n\nNEXT STEPS (in order — do NOT skip ahead to development):\n` +
+						`Sprint ${name} ready on branch sprint/${name}. Phase: planning.\n\n` +
+						`NEXT STEPS (in order — do NOT skip ahead to development):\n` +
 						`1. subagent(product-owner, mode 1) → writes user-stories.md ONLY\n` +
 						`2. ✋ STOP — read user-stories.md, show to human, wait for approval\n` +
 						`3. subagent(product-owner, mode 2) → writes qa-script.md skeleton\n` +
@@ -225,7 +213,7 @@ export default function (pi: ExtensionAPI) {
 						`10. ONLY THEN does development begin.\n\n` +
 						`Do step 1 now: spawn subagent(product-owner) in mode 1 (user stories only, NOT qa-script).`,
 				}],
-				details: { name, caseNumber: caseNumber ?? null },
+				details: {},
 			};
 		},
 	});
@@ -389,7 +377,6 @@ export default function (pi: ExtensionAPI) {
 				state.halted = {
 					reason: `task ${task.id} reached strike 4 at gate ${params.gate}: ${params.reason}`,
 					at: new Date().toISOString(),
-					source: "strike-4",
 				};
 				halted = true;
 				console.error(`[sprint] HALT: ${state.halted.reason}`);
@@ -408,71 +395,6 @@ export default function (pi: ExtensionAPI) {
 					},
 				],
 				details: { strikes, halted },
-			};
-		},
-	});
-
-	pi.registerTool({
-		name: "sprint_state_unhalt",
-		label: "Sprint state unhalt",
-		description:
-			"Clear the halted flag so the sprint can resume. " +
-			"Use after a human-approved fix resolves the blocking issue. " +
-			"Requires a non-empty reason describing what was fixed and who approved it. " +
-			"If haltSource is 'strike-4', also resets the in-flight task's strike counter and gate back to 'builder' " +
-			"so it re-enters the gate chain cleanly (the human approved a direct fix). " +
-			"If haltSource is 'manual', only clears the flag — no task state is touched.",
-		parameters: Type.Object({
-			reason: Type.String({ description: "What was fixed and who approved it (required, non-empty)" }),
-			resetTask: Type.Optional(Type.Boolean({
-				description:
-					"When true (default for strike-4 halts): reset the in-flight task's strikes/gate back to builder. " +
-					"Set false only when the human-approved fix already advanced the task past the failing gate.",
-			})),
-		}),
-		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const { state, paths } = requireActive(ctx.cwd);
-			if (!state.halted) {
-				throw new Error("sprint is not halted — nothing to unhalt");
-			}
-			const reason = (params.reason as string).trim();
-			if (!reason) {
-				throw new Error("sprint_state_unhalt requires a non-empty reason describing the fix and who approved it");
-			}
-			const haltSource = state.halted.source ?? "manual";
-			const shouldResetTask = (params.resetTask as boolean | undefined) ?? (haltSource === "strike-4");
-
-			let taskReset: string | undefined;
-			if (shouldResetTask) {
-				// Find the in-flight task (the one that triggered the halt) and reset
-				// it so the orchestrator can re-run the gate chain from builder.
-				const inFlight = state.tasks.find((t) => t.gate !== "done");
-				if (inFlight) {
-					inFlight.gate = "builder";
-					inFlight.gates = {};
-					// Reset strike counter so we don't immediately re-halt.
-					inFlight.attempts = 0;
-					inFlight.strikes = [];
-					taskReset = inFlight.id;
-				}
-			}
-
-			delete state.halted;
-			saveState(paths, state);
-			appendSprintLog(paths, `unhalt: ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
-
-			return {
-				content: [
-					{
-						type: "text",
-						text:
-							`Sprint unhalted. Reason: ${reason}.` +
-							(taskReset
-								? `\nTask ${taskReset} reset to builder gate (strikes cleared).\nRe-run the gate chain: subagent({ chain: "task-gates", task: "${taskReset}" })`
-								: `\nNo task state was changed. Resume the sprint where it left off.`),
-					},
-				],
-				details: { haltSource, taskReset: taskReset ?? null },
 			};
 		},
 	});
@@ -532,7 +454,6 @@ export default function (pi: ExtensionAPI) {
 				storyRef: task.story,
 				gateSummary,
 				files: task.files,
-				...(state.caseNumber ? { caseNumber: state.caseNumber } : {}),
 			});
 			task.commitSha = sha;
 			transition(task, "done");
@@ -739,11 +660,7 @@ export default function (pi: ExtensionAPI) {
 
 			const goal = readSprintGoal(paths.sprintLog);
 			const sprintNum = state.name.match(/^(\d+)/)?.[1] ?? state.name;
-			// PR title: "64123 - Fix Sort Order" when a case number is present,
-			// otherwise fall back to the old "sprintNum - goal" format.
-			const prTitle = state.caseNumber
-				? `${state.caseNumber} - ${goal}`
-				: `${sprintNum} - ${goal}`;
+			const prTitle = `${sprintNum} - ${goal}`;
 
 			const taskLines = state.tasks
 				.filter((t) => t.gate === "done")
@@ -771,47 +688,11 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("sprint:unhalt", {
-		description: "Clear the halted flag after a human-approved fix. Pass a brief description of what was fixed.",
-		handler: async (args, ctx) => {
-			const { state, paths } = requireActive(ctx.cwd);
-			if (!state.halted) {
-				ctx.ui.notify("Sprint is not halted.", "warning");
-				return;
-			}
-			const reason = (args || "").trim();
-			if (!reason) {
-				ctx.ui.notify("Usage: /sprint:unhalt <what was fixed>. A reason is required.", "error");
-				return;
-			}
-			const haltSource = state.halted.source ?? "manual";
-			const shouldResetTask = haltSource === "strike-4";
-			let taskReset: string | undefined;
-			if (shouldResetTask) {
-				const inFlight = state.tasks.find((t) => t.gate !== "done");
-				if (inFlight) {
-					inFlight.gate = "builder";
-					inFlight.gates = {};
-					inFlight.attempts = 0;
-					inFlight.strikes = [];
-					taskReset = inFlight.id;
-				}
-			}
-			delete state.halted;
-			saveState(paths, state);
-			appendSprintLog(paths, `unhalt (command): ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
-			ctx.ui.notify(
-				`Sprint unhalted.${taskReset ? ` Task ${taskReset} reset to builder — re-run the gate chain.` : ""} Reason: ${reason}`,
-				"info",
-			);
-		},
-	});
-
 	pi.registerCommand("sprint:halt", {
 		description: "Manually halt the sprint (equivalent to strike 4)",
 		handler: async (args, ctx) => {
 			const { state, paths } = requireActive(ctx.cwd);
-			state.halted = { reason: args || "manual halt", at: new Date().toISOString(), source: "manual" };
+			state.halted = { reason: args || "manual halt", at: new Date().toISOString() };
 			saveState(paths, state);
 			appendSprintLog(paths, `manual HALT: ${state.halted.reason}`);
 			console.error(`[sprint] HALT: ${state.halted.reason}`);

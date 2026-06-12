@@ -1,0 +1,17 @@
+{
+  "enableSkillCommands": true,
+  "subagents": {
+    "maxSubagentDepth": 1,
+    "agentOverrides": {
+      "product-owner":    { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "architect":        { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "architect-final":  { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "pm":               { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "tester-planning":  { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "tester":           { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "builder":          { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "reviewer":         { "model": "lmstudio/qwen/qwen3-coder-next" },
+      "security":         { "model": "lmstudio/qwen/qwen3-coder-next" }
+    }
+  }
+}

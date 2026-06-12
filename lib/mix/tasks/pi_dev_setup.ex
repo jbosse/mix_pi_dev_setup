@@ -81,7 +81,8 @@ defmodule Mix.Tasks.PiDevSetup do
       ".pi/skills/security",
       ".pi/skills/styleguide-check",
       ".pi/skills/tester",
-      "docs"
+      "docs",
+      "etc"
     ]
 
     Enum.each(dirs, &Mix.Generator.create_directory/1)
@@ -193,7 +194,10 @@ defmodule Mix.Tasks.PiDevSetup do
 
       # Worktree lifecycle scripts (repo root)
       {"spawn-agent", "spawn-agent"},
-      {"remove-agent", "remove-agent"}
+      {"remove-agent", "remove-agent"},
+
+      # etc/ scripts
+      {"etc/ensure_s3_bucket.exs", "etc/ensure_s3_bucket.exs"}
     ]
   end
 

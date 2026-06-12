@@ -206,4 +206,4 @@ if [ -z "$PI_CMD" ]; then
   exit 1
 fi
 
-exec $PI_CMD
+eval "$PI_CMD"
