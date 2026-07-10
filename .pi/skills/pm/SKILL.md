@@ -26,6 +26,30 @@ Outputs:
 ### 2. Sprint close (after final review, human-approved)
 
 Proposals (not auto-commits):
+- **Write `/docs/sprint/{name}/sprint-review.md`** — consolidate the six planning working docs into a single committed reference document. Structure:
+  ```
+  # Sprint Review: {name}
+  > Goal: {one-line goal}
+
+  ## User Stories
+  {full content of user-stories.md}
+
+  ## Architecture
+  {full content of architecture.md}
+
+  ## Reviewer Checklist
+  {full content of reviewer-checklist.md}
+
+  ## Spec
+  {full content of spec.md}
+
+  ## Plan
+  {full content of plan.md}
+
+  ## Planning Summary
+  {full content of planning-summary.md}
+  ```
+  The source files (`user-stories.md`, `architecture.md`, `reviewer-checklist.md`, `spec.md`, `plan.md`, `planning-summary.md`) are gitignored by `mix pi_dev_setup` / `mix pi_dev_update`; `sprint-review.md` is the permanent committed record of all six.
 - Targeted update to `/docs/architecture.md` — only sections the sprint changed. Preserve the rest.
 - Append to `/docs/project_memory.md` — newest sprint on top. Fields: goal, what shipped, key decisions, gotchas, link to sprint dir.
 - Update `CHANGELOG.md` — append one line inside the **version block marked "Not yet released"** under the correct section heading. Create the heading if it does not yet exist in that block; do NOT create a new version block. Format: `- {sprint-number} - {short user-facing description}`.

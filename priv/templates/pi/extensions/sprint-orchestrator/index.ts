@@ -13,6 +13,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { appendFileSync, existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
 import { Type } from "typebox";
 import { commitLogsConsolidation, commitPlanning, commitTask, createPullRequest, currentBranch, mergeSprint, pushBranch, startSprintBranch } from "./git.js";

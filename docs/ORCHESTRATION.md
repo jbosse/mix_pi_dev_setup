@@ -46,21 +46,26 @@ Each skill file in `/.pi/skills/{name}/SKILL.md` is self-contained and authorita
 
 ```
 /docs/sprint/{sprint-name}/
-  planning-summary.md       # Consolidated human-approval artifact
-  user-stories.md           # PO output
-  architecture.md           # Architect output (sprint-level)
-  reviewer-checklist.md     # Architect output
-  qa-script.md              # Co-authored verification script for the QA team
+  sprint-review.md          # ✅ COMMITTED — consolidated record of all six planning docs
+                            #    (user-stories, architecture, reviewer-checklist, spec, plan,
+                            #     planning-summary). Written by PM at sprint close.
+  qa-script.md              # ✅ COMMITTED — co-authored verification script for the QA team
                             #   — PO seeds, Tester expands, Architect edges,
                             #     PM finalizes at close. Gherkin-style. QA
                             #     annotations happen on the wiki, not here.
-  spec.md                   # PM consolidated spec
-  plan.md                   # PM task list (flat, ordered)
-  sprint-state.json         # Tooling-managed state machine
-  sprint.log                # Orchestrator narrative
-  logs/
+  planning-summary.md       # ⛔ gitignored (captured in sprint-review.md)
+  user-stories.md           # ⛔ gitignored (captured in sprint-review.md)
+  architecture.md           # ⛔ gitignored (captured in sprint-review.md)
+  reviewer-checklist.md     # ⛔ gitignored (captured in sprint-review.md)
+  spec.md                   # ⛔ gitignored (captured in sprint-review.md)
+  plan.md                   # ⛔ gitignored (captured in sprint-review.md)
+  sprint-state.json         # ⛔ gitignored (tooling-managed state machine)
+  sprint.log                # ⛔ gitignored (orchestrator narrative)
+  logs/                     # ⛔ gitignored (per-task agent logs)
     {task-id}-{agent}-{attempt}.log  # One log per agent invocation per task
 ```
+
+> **Note:** `mix pi_dev_setup` and `mix pi_dev_update` append the wildcard patterns for the ⛔ entries to the project's `.gitignore` automatically. Only `sprint-review.md` and `qa-script.md` are ever committed.
 
 ---
 
@@ -201,6 +206,7 @@ Interactive. Orchestrator walks the human through the sprint for sign-off, then 
                                                         /docs/project_memory.md (newest sprint on top),
                                                         /CHANGELOG.md (append under "Not yet released"),
                                                         /README.md,
+                                                        /docs/sprint/{name}/sprint-review.md (consolidates the 6 planning docs),
                                                         /docs/sprint/{name}/qa-script.md (final QA form)
   → ✋ Human approves doc updates
   → tooling: close the sprint*

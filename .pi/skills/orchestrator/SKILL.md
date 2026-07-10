@@ -165,7 +165,7 @@ verify_run
 commit_task(polish-{n})
 # extension flips phase back to final-review on the last polish task
 # --- end polish loop when human is satisfied ---
-subagent(pm, "docs-update mode: propose /docs/architecture.md diff, /docs/project_memory.md append, /CHANGELOG.md line, /README.md update, finalize /docs/sprint/{name}/qa-script.md")
+subagent(pm, "docs-update mode: propose /docs/architecture.md diff, /docs/project_memory.md append, /CHANGELOG.md line, /README.md update, write /docs/sprint/{name}/sprint-review.md (consolidate planning docs), finalize /docs/sprint/{name}/qa-script.md")
 # show to human; they approve
 /sprint:approve-close   (or --local)           # human runs this — you wait
 ```

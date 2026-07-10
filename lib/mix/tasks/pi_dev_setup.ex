@@ -107,6 +107,9 @@ defmodule Mix.Tasks.PiDevSetup do
     # ── 5. Create Dialyzer PLT directory ─────────────────────────────────
     create_plts_dir()
 
+    # ── 6. Patch .gitignore with sprint artifact patterns ─────────────────
+    patch_gitignore()
+
     # ── 5. Patch mix.exs ──────────────────────────────────────────────────
     patch_mix_exs(app_name)
 
@@ -356,6 +359,36 @@ defmodule Mix.Tasks.PiDevSetup do
         File.chmod!(path, bor(current, 0o111))
       end
     end)
+  end
+
+  @sprint_gitignore_patterns """
+  # Sprint planning working docs (intermediate — not committed to the repo)
+  # Only sprint-review.md and qa-script.md are committed; everything else is ephemeral.
+  docs/sprint/*/logs/
+  docs/sprint/*/sprint-state.json
+  docs/sprint/*/sprint.log
+  docs/sprint/*/planning-summary.md
+  docs/sprint/*/architecture.md
+  docs/sprint/*/plan.md
+  docs/sprint/*/spec.md
+  docs/sprint/*/user-stories.md
+  docs/sprint/*/reviewer-checklist.md
+  """
+
+  # Sentinel: first data line of the block above.
+  @sprint_gitignore_sentinel "docs/sprint/*/logs/"
+
+  defp patch_gitignore do
+    path = ".gitignore"
+    existing = if File.exists?(path), do: File.read!(path), else: ""
+
+    if String.contains?(existing, @sprint_gitignore_sentinel) do
+      Mix.shell().info([:light_black, "* no change", :reset, " #{path} (sprint patterns already present)"])
+    else
+      separator = if String.ends_with?(existing, "\n") or existing == "", do: "", else: "\n"
+      File.write!(path, existing <> separator <> "\n" <> @sprint_gitignore_patterns)
+      Mix.shell().info([:green, "* updated  ", :reset, "#{path} (sprint artifact patterns added)"])
+    end
   end
 
   defp create_plts_dir do
