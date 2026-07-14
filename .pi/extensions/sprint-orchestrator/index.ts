@@ -659,8 +659,8 @@ export default function (pi: ExtensionAPI) {
 			await pushBranch(pi, state.branch);
 
 			const goal = readSprintGoal(paths.sprintLog);
-			const sprintNum = state.name.match(/^(\d+)/)?.[1] ?? state.name;
-			const prTitle = `${sprintNum} - ${goal}`;
+			void goal; // goal is in the PR body; keep the title terse
+			const prTitle = sprintNameToTitle(state.name, undefined);
 
 			const taskLines = state.tasks
 				.filter((t) => t.gate === "done")
@@ -705,6 +705,21 @@ export default function (pi: ExtensionAPI) {
 // Extract the sprint goal from the first "Goal:" line of sprint.log. The log
 // is the one-line-per-event narrative seeded at sprint_start with the goal
 // the user supplied during the planning interview.
+/**
+ * Convert a kebab-case sprint name into a terse, human-readable PR title.
+ * Strips a leading case-number prefix (digits + hyphen), splits on hyphens,
+ * and title-cases each word.
+ *
+ * Examples:
+ *   "64821-update-customer-reviews-alert-schema" → "64821 - Update Customer Reviews Alert Schema"
+ *   "update-customer-reviews-alert-schema"       → "Update Customer Reviews Alert Schema"
+ */
+function sprintNameToTitle(name: string, caseNumber: string | undefined | null): string {
+	const slug = caseNumber ? name.replace(new RegExp(`^${caseNumber}-`), "") : name;
+	const label = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+	return caseNumber ? `${caseNumber} - ${label}` : label;
+}
+
 function readSprintGoal(sprintLog: string): string {
 	try {
 		const content = readFileSync(sprintLog, "utf8");

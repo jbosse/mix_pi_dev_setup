@@ -184,10 +184,15 @@ export async function commitLogsConsolidation(
 	input: { sprintName: string; logsDirRel: string; consolidatedLogRel: string },
 ): Promise<string | null> {
 	return authorized(async () => {
-		// Stage deletions of all individual log files. `-A` handles tracked
-		// deletions; untracked files deleted from disk are simply absent.
-		const addLogs = await pi.exec("git", ["add", "-A", "--", input.logsDirRel]);
-		if (addLogs.code !== 0) throw new Error(`git add (log deletions) failed: ${addLogs.stderr}`);
+		// Stage deletions of any tracked individual log files. We only run this
+		// if the logsDir has tracked content — if logs are gitignored the dir
+		// won't appear in `git ls-files` and `git add` on a missing/empty dir
+		// exits non-zero, which would abort the close command unnecessarily.
+		const lsLogs = await pi.exec("git", ["ls-files", "--", input.logsDirRel]);
+		if (lsLogs.stdout.trim().length > 0) {
+			const addLogs = await pi.exec("git", ["add", "-A", "--", input.logsDirRel]);
+			if (addLogs.code !== 0) throw new Error(`git add (log deletions) failed: ${addLogs.stderr}`);
+		}
 
 		// Stage the consolidated log.
 		const addConsolidated = await pi.exec("git", ["add", "--", input.consolidatedLogRel]);
