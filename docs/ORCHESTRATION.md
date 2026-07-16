@@ -82,13 +82,24 @@ Each skill file in `/.pi/skills/{name}/SKILL.md` is self-contained and authorita
 
 - **One commit per task**, authored by tooling after all gates pass.
 - Builder drafts the message; Orchestrator finalizes it.
-- Format:
+- Format (no case number):
 
 ```
 [sprint/{name}] task-{id}: {short title}
 
 {user story ref}
 Builder: ✅  Tester: ✅  Reviewer: ✅  Security: ✅  Verify: ✅
+```
+
+- Format (with case number, appended as the last line of the body):
+
+```
+[sprint/{name}] task-{id}: {short title}
+
+{user story ref}
+Builder: ✅  Tester: ✅  Reviewer: ✅  Security: ✅  Verify: ✅
+
+{case-number}
 ```
 
 - Post-final-review polish fixes are **new tasks** through the full gate loop, prefixed `polish-{n}:`.
@@ -101,8 +112,9 @@ Interactive. Orchestrator runs a collaborative discovery session with the human 
 
 ```
 Human idea
-  → 🧭 Orchestrator interview           (parent: adaptive Q&A — goal, name, scope, constraints, success criteria)
-  → tooling: sprint_start*              (creates branch + scaffold; REFUSES unless interviewConfirmed=true)
+  → 🧭 Orchestrator interview           (parent: adaptive Q&A — goal, case number, name, scope, constraints, success criteria)
+  → tooling: sprint_start*              (creates branch + scaffold; REFUSES unless interviewConfirmed=true;
+                                          if a caseNumber was provided, prefixes the sprint name with it)
   → subagent(product-owner, mode 1)     → writes user-stories.md ONLY (no qa-script yet)
   → ✋ Human approval of user stories   (Orchestrator shows user-stories.md, waits for approval/feedback)
   → subagent(product-owner, mode 2)     → writes qa-script.md skeleton (from approved stories)
@@ -126,7 +138,10 @@ Each subagent call is a file-to-file handoff: "read these N files, write this on
 1. `mix deps.get --check-locked` — no `mix.lock` drift
 2. `mix compile --warnings-as-errors`
 3. `mix format --check-formatted`
+4. `mix credo --strict`
+5. `mix sobelow --config`
 6. `MIX_ENV=test mix ecto.create --quiet && mix ecto.migrate --quiet`
+7. `mix dialyzer`
 8. `mix test --warnings-as-errors`
 9. `mix assets.build`
 

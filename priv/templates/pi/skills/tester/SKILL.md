@@ -52,7 +52,7 @@ Load before working:
 - Read the task spec, relevant stubs, and Builder's production code.
 - Flesh out tests to cover every AC on the task.
 - Run `mix test` (scoped to the relevant files). Verdict is binary:
-  - **PASS**: call `sprint_state_transition(taskId, "reviewer")`.
+  - **PASS**: call `gate_pass(taskId, "tester")`.
   - **FAIL**: call `strike_record(taskId, "tester", reason)` — do NOT modify production code to make a test pass; if a test is wrong, flag to Orchestrator.
 
 ## BDD naming (Reviewer will check)
@@ -62,8 +62,8 @@ Structure is idiomatic ExUnit. BDD phrasing lives in the test names, **not** in 
 **Planning stubs** (comment-only bodies, no real code):
 
 ```elixir
-defmodule StaffForecast.Forecasts.Commands.CreateForecastTest do
-  use StaffForecast.DataCase, async: true
+defmodule __APP_MODULE__.Forecasts.Commands.CreateForecastTest do
+  use __APP_MODULE__.DataCase, async: true
 
   describe "execute/2" do
     @tag :pending
@@ -86,11 +86,11 @@ end
 **Gate 1 implementation** (filled in by Tester during dev, after Builder's code exists):
 
 ```elixir
-defmodule StaffForecast.Forecasts.Commands.CreateForecastTest do
-  use StaffForecast.DataCase, async: true
+defmodule __APP_MODULE__.Forecasts.Commands.CreateForecastTest do
+  use __APP_MODULE__.DataCase, async: true
 
-  alias StaffForecast.Forecasts.Commands.CreateForecast
-  alias StaffForecast.Forecasts.Errors.InvalidInput
+  alias __APP_MODULE__.Forecasts.Commands.CreateForecast
+  alias __APP_MODULE__.Forecasts.Errors.InvalidInput
 
   describe "execute/2" do
     test "returns {:ok, %Forecast{}} when attrs are valid", %{ctx: ctx} do
@@ -128,4 +128,4 @@ end
 ## Required tool calls
 
 - `task_log_append` with agent=`tester` for every test run.
-- `sprint_state_transition` on pass OR `strike_record` on fail — never skip this.
+- `gate_pass` on pass OR `strike_record` on fail — never skip this.

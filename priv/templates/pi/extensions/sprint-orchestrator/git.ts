@@ -166,10 +166,17 @@ export async function commitTask(pi: ExtensionAPI, input: CommitInput): Promise<
 			);
 		}
 
-		// Stage declared files plus any dirty sprint artifacts (audit trail:
-		// sprint-state.json transitions, per-task logs, sprint.log appends).
-		const addDeclared = await pi.exec("git", ["add", "--", ...input.files]);
-		if (addDeclared.code !== 0) throw new Error(`git add (declared) failed: ${addDeclared.stderr}`);
+		// Stage the actual dirty paths (all verified owned above) rather than
+		// the declared list verbatim — `git add` exits non-zero on a declared
+		// pathspec that matches nothing (e.g. "priv/repo/migrations/" when the
+		// task legitimately produced no migration), which would fail the commit.
+		const dirtyPaths = dirty
+			.filter(({ path }) => !path.startsWith(`${input.sprintRootRel}/`))
+			.map(({ path }) => path);
+		if (dirtyPaths.length > 0) {
+			const addDeclared = await pi.exec("git", ["add", "--", ...dirtyPaths]);
+			if (addDeclared.code !== 0) throw new Error(`git add (task files) failed: ${addDeclared.stderr}`);
+		}
 
 		const addArtifacts = await pi.exec("git", ["add", "--", input.sprintRootRel]);
 		if (addArtifacts.code !== 0) {

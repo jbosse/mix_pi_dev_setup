@@ -19,7 +19,7 @@ Binary. Independent of Reviewer — both must pass.
 
 ### On pass
 
-Call `sprint_state_transition(taskId, "verify")`.
+Call `gate_pass(taskId, "security")`.
 
 ### On fail
 
@@ -90,4 +90,4 @@ Then call `strike_record(taskId, "security", "<summary>")`. Attach full findings
 ## Required tool calls
 
 - `task_log_append` with agent=`security` for verdict + findings.
-- Exactly one of `sprint_state_transition` (pass) or `strike_record` (fail).
+- Exactly one of `gate_pass` (pass) or `strike_record` (fail).

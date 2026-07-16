@@ -20,8 +20,8 @@ Read user-stories.md (+ any architecture.md / AGENTS.md / styleguide.md bits the
 ```
 test "returns {:ok, %Forecast{}} when attrs are valid", %{ctx: ctx} do
   # Create initial forecast
-  {:ok, %StaffForecast.Forecasts.Schema.Forecast{id: id}} =
-    StaffForecast.Forecasts.Commands.CreateForecast.execute(ctx, %{name: "Q1", period: "2025-Q1"})
+  {:ok, %__APP_MODULE__.Forecasts.Schema.Forecast{id: id}} =
+    __APP_MODULE__.Forecasts.Commands.CreateForecast.execute(ctx, %{name: "Q1", period: "2025-Q1"})
   # ...
 end
 ```
@@ -40,4 +40,4 @@ end
 
 3. **Before declaring done, run `mix precommit`.** All steps must pass. Fix any failures in your test stubs (formatting, compilation, credo, dialyzer) before returning. The `@tag :pending` tests won't fail the suite, but malformed modules, missing aliases, or bad formatting will — fix those.
 
-You may use `bash` to run `mix format`, `mix compile`, etc. Do NOT call `sprint_state_transition` or `strike_record` — those belong to the dev-phase Tester. Log via `task_log_append(agent="tester", attempt=1)`.
+You may use `bash` to run `mix format`, `mix compile`, etc. Do NOT call `gate_pass` or `strike_record` — those belong to the dev-phase Tester. Log via `task_log_append(agent="tester", attempt=1)`.

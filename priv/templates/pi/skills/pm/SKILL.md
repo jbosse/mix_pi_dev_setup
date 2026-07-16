@@ -86,9 +86,9 @@ Tasks run **strictly in list order, one at a time**. There are no waves, no para
 ### task-N: {title}
 Story: Story X AC Y
 Files:
-  - lib/staff_forecast/forecasts/commands/create_forecast.ex
-  - test/staff_forecast/forecasts/commands/create_forecast_test.exs
-  - lib/staff_forecast/forecasts/contracts/create_forecast_input.ex
+  - lib/__APP_NAME__/forecasts/commands/create_forecast.ex
+  - test/__APP_NAME__/forecasts/commands/create_forecast_test.exs
+  - lib/__APP_NAME__/forecasts/contracts/create_forecast_input.ex
 ```
 
 Example including a migration (directory prefix covers the timestamped filename `mix ecto.gen.migration` will produce):
@@ -98,8 +98,8 @@ Example including a migration (directory prefix covers the timestamped filename 
 Story: Story Y AC 1
 Files:
   - priv/repo/migrations/
-  - lib/staff_forecast/forecasts/schema/forecast.ex
-  - test/staff_forecast/forecasts/schema/forecast_test.exs
+  - lib/__APP_NAME__/forecasts/schema/forecast.ex
+  - test/__APP_NAME__/forecasts/schema/forecast_test.exs
 ```
 
 ## Hard rules

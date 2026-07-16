@@ -1,0 +1,10 @@
+{
+  "name": "sprint-orchestrator-typecheck",
+  "private": true,
+  "description": "CI-only harness: typechecks priv/templates/pi/extensions/sprint-orchestrator against the published pi-coding-agent types.",
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "^0.73.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

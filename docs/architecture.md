@@ -17,6 +17,7 @@ Phoenix 1.8 scaffold generated via `mix phx.new`. `phx.gen.auth` applied — bas
 | Database                     | PostgreSQL via Ecto |
 | ORM                          | Ecto |
 | HTTP client                  | `Req` (sole permitted client; see `AGENTS.md`) |
+| Static analysis              | Credo, Dialyzer, Sobelow |
 | Styling                      | Tailwind CSS v4, esbuild |
 
 ## Layering
@@ -74,4 +75,4 @@ Standard `phx.gen.auth` — email/password with `current_scope`. No TFA or passk
 - `PiDevSetup.Ctx` module not yet established.
 - `.env.example` not yet created.
 - No ADRs.
-- `mix precommit` alias needs expansion to the full nine-step pipeline
+- `mix precommit` alias needs expansion to the full nine-step pipeline (requires credo, dialyxir, sobelow deps).

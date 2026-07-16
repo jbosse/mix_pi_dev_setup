@@ -18,12 +18,29 @@ import { SPRINT_ROOT_REL, type SprintPaths } from "./paths.js";
 // rev-parse) remains free.
 const BLOCKED_GIT_SUBCOMMANDS = ["commit", "merge", "push", "reset", "rebase", "cherry-pick"];
 
+// Git global options that consume a separate value argument. Skipped (with
+// their value) when hunting for the subcommand so `git -c a=b commit` can't
+// slip past the guard.
+const GIT_VALUE_FLAGS = new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
+
 function extractGitSubcommand(command: string): string | undefined {
-	// Cheap parse — we only need to see the first `git <word>`. Good enough for
-	// guard purposes; a determined user could still shell-escape around it, but
-	// the point is to catch accidental model-initiated mutations.
-	const m = command.match(/\bgit\s+([a-z-]+)/);
-	return m?.[1];
+	// Cheap parse — we only need to see the first `git <subcommand>`. Good
+	// enough for guard purposes; a determined user could still shell-escape
+	// around it, but the point is to catch accidental model-initiated mutations.
+	const m = command.match(/\bgit\s+(.*)/s);
+	if (!m) return undefined;
+	const tokens = m[1].split(/\s+/);
+	for (let i = 0; i < tokens.length; i++) {
+		const tok = tokens[i];
+		if (tok === "") continue;
+		if (GIT_VALUE_FLAGS.has(tok)) {
+			i++; // skip the flag's value token too
+			continue;
+		}
+		if (tok.startsWith("-")) continue; // --flag or --flag=value forms
+		return tok;
+	}
+	return undefined;
 }
 
 export function installStartupGuard(pi: ExtensionAPI): void {
@@ -118,6 +135,17 @@ export function installOwnershipGuard(
 		const sprintRootRel = `${SPRINT_ROOT_REL}/${active.state.name}`;
 		if (path === sprintRootRel || path.startsWith(`${sprintRootRel}/`)) return;
 
+		// The extension source (including these guards) is never writable from
+		// inside the sprint flow — otherwise the model could rewrite the
+		// guardrails it is subject to.
+		if (path.startsWith(".pi/extensions/")) {
+			console.error(`[sprint] blocked write to extension source: ${path}`);
+			return {
+				block: true,
+				reason: `${path} is sprint-tooling source. The sprint flow may never modify .pi/extensions/ — ask the human to change tooling.`,
+			};
+		}
+
 		const { state } = active;
 		// Before the plan is seeded, we have no ownership map to enforce.
 		// Planning-phase writes are restricted to docs, test stubs, and config —
@@ -127,7 +155,6 @@ export function installOwnershipGuard(
 			const PLANNING_ALLOWED_PREFIXES = [
 				"docs/",
 				"test/",
-				".pi/",
 				"config/",
 				"priv/",
 			];
@@ -136,21 +163,27 @@ export function installOwnershipGuard(
 				console.error(`[sprint] planning-phase write blocked: ${path} — only docs/test/config/priv allowed before plan approval`);
 				return {
 					block: true,
-					reason: `${path} is outside allowed planning-phase paths (docs/, test/, config/, priv/, .pi/). ` +
+					reason: `${path} is outside allowed planning-phase paths (docs/, test/, config/, priv/). ` +
 						`Production code cannot be written until the plan is approved and tasks are seeded.`,
 				};
 			}
 			return;
 		}
 
-		const inFlight = state.tasks.filter((t) => t.gate !== "done");
-		const owners = inFlight.filter((t) => t.files.some((f) => pathOwnedBy(path, f)));
-		if (owners.length >= 1) return; // at least one in-flight task claims this path — allow
+		// Single-process flow: exactly one task is in flight — the FIRST
+		// not-done task in plan order. Only its declared files are writable.
+		// (During final review, with every task done, nothing is writable
+		// outside sprint artifacts until PM appends a polish task.)
+		const current = state.tasks.find((t) => t.gate !== "done");
+		if (current && current.files.some((f) => pathOwnedBy(path, f))) return;
 
-		// No in-flight owner. Check later tasks so we can produce a specific error.
-		const futureOwners = state.tasks.filter(
-			(t) => t.gate !== "done" && t.files.some((f) => pathOwnedBy(path, f)),
-		);
+		// Not owned by the current task. If a later task claims it, say so
+		// specifically — Builder must finish the current task first.
+		const futureOwners = current
+			? state.tasks.filter(
+					(t) => t !== current && t.gate !== "done" && t.files.some((f) => pathOwnedBy(path, f)),
+				)
+			: [];
 		if (futureOwners.length > 0) {
 			const where = futureOwners.map((t) => `${t.id} (gate ${t.gate})`).join(", ");
 			console.error(`[sprint] cross-task write blocked: ${path} — ${where}`);

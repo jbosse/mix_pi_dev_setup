@@ -43,15 +43,16 @@ Load before working:
   - Idempotency checks (re-submit same action, re-run same operation)
   - Data-visibility variants (user scoping, soft-deleted rows)
   Tag each new Scenario `[PO: edge]`, `[PO: sad]`, or `[PO: authz]` per the taxonomy in the PO skill. Do NOT invent new tags. Match the PO-skill formatting: each `Given` / `When` / `Then` / `And` step is a Markdown numbered bullet (`1. ` prefix). No handwritten sign-off line.
+  **QA audience rule**: every scenario you add must be executable by a QA team member in the deployed app's UI — no DB access, no `iex`, no shell commands, no log inspection. Preconditions describe UI state; `Then` steps describe what the user sees. If a scenario is genuinely only verifiable server-side, place it in the `## DEV ONLY scenarios` section with a written reason and tag it `[DEV ONLY]`. Prefer surfacing the result in the UI over marking DEV ONLY.
 - Every AC appears in **three places**: one `test` (ExUnit), one `Scenario:` in `qa-script.md`, one AC line in `user-stories.md`. Reviewer verifies the 1:1:1 mapping at Gate 2.
-- **Before returning, run `mix precommit` and ensure it passes.** Fix any failures (formatting, compilation). `@tag :pending` tests won't fail the suite, but malformed stubs will — fix those before declaring done.
+- **Before returning, run `mix precommit` and ensure it passes.** Fix any failures (formatting, compilation, credo, dialyzer). `@tag :pending` tests won't fail the suite, but malformed stubs will — fix those before declaring done.
 
 ### 2. Dev task — Gate 1
 
 - Read the task spec, relevant stubs, and Builder's production code.
 - Flesh out tests to cover every AC on the task.
 - Run `mix test` (scoped to the relevant files). Verdict is binary:
-  - **PASS**: call `sprint_state_transition(taskId, "reviewer")`.
+  - **PASS**: call `gate_pass(taskId, "tester")`.
   - **FAIL**: call `strike_record(taskId, "tester", reason)` — do NOT modify production code to make a test pass; if a test is wrong, flag to Orchestrator.
 
 ## BDD naming (Reviewer will check)
@@ -127,4 +128,4 @@ end
 ## Required tool calls
 
 - `task_log_append` with agent=`tester` for every test run.
-- `sprint_state_transition` on pass OR `strike_record` on fail — never skip this.
+- `gate_pass` on pass OR `strike_record` on fail — never skip this.

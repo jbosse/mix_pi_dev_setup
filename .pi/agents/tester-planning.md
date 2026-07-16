@@ -38,6 +38,6 @@ end
 
 2. Expand `/docs/sprint/{name}/qa-script.md` with edge cases (role variants, boundary data, error branches, idempotency checks).
 
-3. **Before declaring done, run `mix precommit`.** All steps must pass. Fix any failures in your test stubs (formatting, compilation, tests) before returning. The `@tag :pending` tests won't fail the suite, but malformed modules, missing aliases, or bad formatting will — fix those.
+3. **Before declaring done, run `mix precommit`.** All steps must pass. Fix any failures in your test stubs (formatting, compilation, credo, dialyzer) before returning. The `@tag :pending` tests won't fail the suite, but malformed modules, missing aliases, or bad formatting will — fix those.
 
-You may use `bash` to run `mix format`, `mix compile`, etc. Do NOT call `sprint_state_transition` or `strike_record` — those belong to the dev-phase Tester. Log via `task_log_append(agent="tester", attempt=1)`.
+You may use `bash` to run `mix format`, `mix compile`, etc. Do NOT call `gate_pass` or `strike_record` — those belong to the dev-phase Tester. Log via `task_log_append(agent="tester", attempt=1)`.

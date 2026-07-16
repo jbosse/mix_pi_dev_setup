@@ -17,34 +17,34 @@ _The Architect owns this section. If PO or Builder uses a term that isn't here, 
 ## 🧱 Architectural Terms
 
 ### Context
-A Phoenix context module (`StaffForecast.Forecasts`, `StaffForecast.Accounts`, …) — the public API boundary for a bounded-context slice. Owns its `commands/`, `queries/`, `ports/`, `adapters/`, `contracts/`, and `errors/` subdirectories.
+A Phoenix context module (`__APP_MODULE__.Forecasts`, `__APP_MODULE__.Accounts`, …) — the public API boundary for a bounded-context slice. Owns its `commands/`, `queries/`, `ports/`, `adapters/`, `contracts/`, and `errors/` subdirectories.
 
 ### Command
-A module under `lib/staff_forecast/<context>/commands/` exposing a single public `execute/2`. One Command = one business write operation. All writes wrapped in exactly one `Ecto.Multi`. Required when an operation touches ≥ 2 tables, crosses a port/adapter, or has a named business meaning (see styleguide § Command/Query Separation).
+A module under `lib/__APP_NAME__/<context>/commands/` exposing a single public `execute/2`. One Command = one business write operation. All writes wrapped in exactly one `Ecto.Multi`. Required when an operation touches ≥ 2 tables, crosses a port/adapter, or has a named business meaning (see styleguide § Command/Query Separation).
 
 ### Query
-A module under `lib/staff_forecast/<context>/queries/` exposing a single public `run/2`. Reads only — never writes.
+A module under `lib/__APP_NAME__/<context>/queries/` exposing a single public `run/2`. Reads only — never writes.
 
 ### Port
-A behaviour under `lib/staff_forecast/<context>/ports/`. The capability the domain needs, vendor-agnostic.
+A behaviour under `lib/__APP_NAME__/<context>/ports/`. The capability the domain needs, vendor-agnostic.
 
 ### Adapter
-A concrete implementation of a Port under `lib/staff_forecast/<context>/adapters/`. The **only** layer allowed to `alias` a vendor SDK or call `Req` directly.
+A concrete implementation of a Port under `lib/__APP_NAME__/<context>/adapters/`. The **only** layer allowed to `alias` a vendor SDK or call `Req` directly.
 
 ### Contract
-An `Ecto` embedded-schema module under `lib/staff_forecast/<context>/contracts/` validating an external boundary (inbound LiveView event, controller params, background job args, vendor response, outbound vendor request). See styleguide § Boundary Validation.
+An `Ecto` embedded-schema module under `lib/__APP_NAME__/<context>/contracts/` validating an external boundary (inbound LiveView event, controller params, background job args, vendor response, outbound vendor request). See styleguide § Boundary Validation.
 
 ### Domain Error
-A struct (`defexception` so it's also raisable) under `lib/staff_forecast/<context>/errors/`, returned in `{:error, struct}` tuples from Commands / Queries / Adapters. See styleguide § Error Handling.
+A struct (`defexception` so it's also raisable) under `lib/__APP_NAME__/<context>/errors/`, returned in `{:error, struct}` tuples from Commands / Queries / Adapters. See styleguide § Error Handling.
 
 ### Ctx
-The `%StaffForecast.Ctx{}` struct threaded as the **first argument** to every Command and Query. Carries `correlation_id`, `user_id`. Mirrored into `Logger.metadata/1` at the Command boundary via `StaffForecast.Ctx.stamp_metadata/1`. Established in the first sprint that introduces Commands.
+The `%__APP_MODULE__.Ctx{}` struct threaded as the **first argument** to every Command and Query. Carries `correlation_id`, `user_id`. Mirrored into `Logger.metadata/1` at the Command boundary via `__APP_MODULE__.Ctx.stamp_metadata/1`. Established in the first sprint that introduces Commands.
 
 ### Correlation ID
 A UUID generated at request entry (or inherited from an upstream trace) carried in `%Ctx{}`. Stamped on every log line for the lifetime of the request.
 
 ### Config
-`StaffForecast.Config` — the single module permitted to call `Application.get_env/2`. Established when the first sprint needs centralized config access. See styleguide § Config & Secrets.
+`__APP_MODULE__.Config` — the single module permitted to call `Application.get_env/2`. Established when the first sprint needs centralized config access. See styleguide § Config & Secrets.
 
 ---
 

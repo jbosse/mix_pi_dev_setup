@@ -1,6 +1,6 @@
 # 📐 Code Policies & Styleguide
 
-The rules below are **enforceable**. Reviewer applies them per-task; `mix format` enforces what they can at the verification gate.
+The rules below are **enforceable**. Reviewer applies them per-task; `mix credo --strict`, `mix dialyzer`, `mix format`, and `mix sobelow` enforce what they can at the verification gate.
 
 The single goal: **NO CRAP CODE**.
 
@@ -13,6 +13,9 @@ The single goal: **NO CRAP CODE**.
 - **Database**: PostgreSQL via Ecto.
 - **HTTP**: `Req` only (per `AGENTS.md`). `:httpoison`, `:tesla`, `:httpc` are banned.
 - **Formatter**: `mix format`. Law. No debate.
+- **Linter**: `mix credo --strict`. Config tuned to the limits in this document.
+- **Static analysis**: `mix dialyzer` on every gate. Behaviours must have `@spec`s.
+- **Security static analysis**: `mix sobelow --config` on every gate.
 - **Styling**: Tailwind v4 per `AGENTS.md` (`@import "tailwindcss" source(none);` etc.). `app.js` + `app.css` only — no extra bundles, no external CDN scripts.
 
 Everything above runs through `mix precommit`. If a rule is not machine-enforceable, the Reviewer enforces it. See the full list under [Verification Gate](#-verification-gate).
@@ -26,7 +29,10 @@ Everything above runs through `mix precommit`. If a rule is not machine-enforcea
 | Function length              | ~15 lines                 | Reviewer               |
 | Module length (soft)         | ~200 lines                | Reviewer               |
 | Module length (hard)         | ~400 lines → must split   | Reviewer               |
+| Cyclomatic complexity        | ≤ 9 per function          | Credo                  |
 | Function arity               | ≤ 4 positional args       | Reviewer               |
+| Nesting depth                | ≤ 3 (`if`/`case`/`cond`/`with`) | Credo            |
+| Pipe chain length            | ≤ 7 steps                 | Credo + Reviewer       |
 
 Arities above 4 must take an options `keyword` or a struct. Over-limit code requires an inline justification comment **and** a Reviewer decision, otherwise → fail.
 
@@ -255,7 +261,10 @@ Wired as `mix precommit`. Every step runs fail-fast. All green or the task goes 
 1. `mix deps.get --check-locked` — `mix.lock` drift fails the gate.
 2. `mix compile --warnings-as-errors` — no warnings in committed code.
 3. `mix format --check-formatted` — formatter is law.
+4. `mix credo --strict` — style / consistency lints tuned to this document.
+5. `mix sobelow --config` — security static analysis for Phoenix.
 6. `MIX_ENV=test mix ecto.create --quiet && mix ecto.migrate --quiet` — broken migrations fail the gate.
+7. `mix dialyzer` — static type checks; PLTs cached between runs.
 8. `mix test --warnings-as-errors` — full suite.
 9. `mix assets.build` — broken Tailwind / esbuild configs fail here, not at runtime.
 

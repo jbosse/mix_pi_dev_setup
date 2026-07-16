@@ -26,7 +26,7 @@ Use this as a fast pre-handoff pass. Anything ambiguous → defer to the full st
 - [ ] One public function per Command (`execute/2`), one per Query (`run/2`)
 
 ### Layering & CQS
-- [ ] `staff_forecast_web/` calls only context public APIs — no reaching into `commands/` / `queries/`
+- [ ] `__APP_WEB_NAME__/` calls only context public APIs — no reaching into `commands/` / `queries/`
 - [ ] Domain (`commands/`, `queries/`, `contracts/`, `errors/`) depends only on `ports/` behaviours — never on a concrete adapter or vendor SDK
 - [ ] Vendor SDKs / `Req` calls live only in `adapters/`
 - [ ] Every Command wraps its writes in exactly one `Ecto.Multi`
@@ -34,8 +34,8 @@ Use this as a fast pre-handoff pass. Anything ambiguous → defer to the full st
 - [ ] Command threshold respected: ≥ 2 tables / crosses a port / named business operation → Command module; else plain context function is fine
 
 ### Context threading (`%Ctx{}`)
-- [ ] Every Command and Query takes `%StaffForecast.Ctx{}` as first arg (once established in the project — follow the sprint's architecture.md for guidance)
-- [ ] `StaffForecast.Ctx.stamp_metadata/1` called at the Command/Query boundary — not hand-rolled `Logger.metadata/1`
+- [ ] Every Command and Query takes `%__APP_MODULE__.Ctx{}` as first arg (once established in the project — follow the sprint's architecture.md for guidance)
+- [ ] `__APP_MODULE__.Ctx.stamp_metadata/1` called at the Command/Query boundary — not hand-rolled `Logger.metadata/1`
 
 ### Naming
 - [ ] Files `snake_case.ex`; no role suffix in filename (path carries the role)

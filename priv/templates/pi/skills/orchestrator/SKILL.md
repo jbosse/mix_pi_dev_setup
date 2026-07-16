@@ -38,7 +38,7 @@ Every `*`-marked step in ORCHESTRATION.md goes through the `sprint-orchestrator`
 |---|---|
 | Create sprint branch + scaffold | `sprint_start` |
 | Read state | `sprint_state_get` |
-| Advance a task on PASS (only when the subagent did not self-advance) | `sprint_state_transition` |
+| Advance a task on PASS (only when the subagent crashed before calling it itself) | `gate_pass(taskId, gate)` — you report the gate that ran; the tool picks the next one |
 | Log narrative | `task_log_append` (agent=`orchestrator`) |
 | Record FAIL + strike (only when a subagent crashed before calling it itself) | `strike_record` |
 | Unhalt sprint after a human-approved fix | `sprint_state_unhalt` |
@@ -122,7 +122,7 @@ Do NOT proceed to qa-script or architect until the human has explicitly approved
 Do NOT begin the dev flow until ALL of these are true:
 1. `/sprint:approve-planning` has been run by the human (phase flipped to `planning-approved`)
 2. `sprint_tasks_seed` has been called by PM subagent (phase flipped to `development`)
-If either is missing, the sprint_state_transition tool will refuse your calls. The ownership guard will also block production code writes outside planning-approved paths.
+If either is missing, the gate_pass tool will refuse your calls. The ownership guard will also block production code writes outside planning-approved paths.
 </HARD-GATE>
 
 Single-process flow. No waves. No parallelism. For each task:
@@ -131,14 +131,14 @@ Single-process flow. No waves. No parallelism. For each task:
 task_log_append(taskId, "orchestrator", 1, "assigned")
 subagent({ chain: "task-gates", task: taskId })
     # chain runs builder → tester → reviewer → security
-    # each gate child calls sprint_state_transition on pass OR strike_record on fail
+    # each child reports ITS OWN gate: gate_pass(taskId, <gate>) on pass OR strike_record on fail
+    # (the tool computes the next gate — nobody chooses a target)
     # on strike_record the state machine sets task.gate = "builder"
 if state.halted: surface to human, stop.
 if task.gate is still not "verify": a gate failed. Handle retry (see "Strike protocol").
 verify_run                                     # Gate 4 (tooling*)
-if verify failed:
-    strike_record(taskId, "verify", <summary>)
-    handle retry as below
+    # green → the tool auto-advances the task to "commit"
+    # red   → the tool auto-records a verify strike (task resets to builder); handle retry as below
 commit_task(taskId)                            # tooling*, single commit
 # move to next task (read via sprint_state_get)
 ```

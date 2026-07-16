@@ -1,4 +1,4 @@
-# 🏛 Architecture — StaffForecast
+# 🏛 Architecture — __APP_MODULE__
 
 _Living document. Updated at sprint close by PM (targeted sections only). See `docs/sprint/*/architecture.md` for sprint-specific detail._
 
@@ -25,8 +25,8 @@ Phoenix 1.8 scaffold generated via `mix phx.new`. `phx.gen.auth` applied — bas
 Phoenix contexts as bounded-context boundaries, with a fixed internal shape. Full rules in [`/docs/styleguide.md` § Architecture](./styleguide.md#-architecture).
 
 ```
-lib/staff_forecast_web/               ← Thin: parse, authorize, dispatch. No business logic.
-lib/staff_forecast/<context>/
+lib/__APP_WEB_NAME__/               ← Thin: parse, authorize, dispatch. No business logic.
+lib/__APP_NAME__/<context>/
   ├── commands/                       ← Write ops. Single `execute/2`. Ecto.Multi.
   ├── queries/                        ← Read ops. Single `run/2`. No writes.
   ├── ports/                          ← Behaviours (capabilities the domain needs).
@@ -36,7 +36,7 @@ lib/staff_forecast/<context>/
   └── <context>.ex                    ← Public API façade.
 ```
 
-Domain modules depend only on ports. Adapters are wired in via `config/runtime.exs` → `StaffForecast.Config` (to be established) → application supervision tree.
+Domain modules depend only on ports. Adapters are wired in via `config/runtime.exs` → `__APP_MODULE__.Config` (to be established) → application supervision tree.
 
 ## Key Patterns
 
@@ -48,17 +48,17 @@ No pattern is introduced without a named justification in an ADR or the sprint's
 
 ## Request context (`%Ctx{}`)
 
-Every Command and Query will take `%StaffForecast.Ctx{}` as its first argument. `StaffForecast.Ctx.stamp_metadata/1` mirrors the context into `Logger.metadata/1` at the Command boundary. This will be established in the first sprint that introduces Commands. Until then, follow the sprint architecture.md.
+Every Command and Query will take `%__APP_MODULE__.Ctx{}` as its first argument. `__APP_MODULE__.Ctx.stamp_metadata/1` mirrors the context into `Logger.metadata/1` at the Command boundary. This will be established in the first sprint that introduces Commands. Until then, follow the sprint architecture.md.
 
 ## Config
 
 - `config/runtime.exs` is the **only** place `System.get_env/1` runs.
-- `StaffForecast.Config` will be the **only** place `Application.get_env/2` runs — to be established when needed.
+- `__APP_MODULE__.Config` will be the **only** place `Application.get_env/2` runs — to be established when needed.
 - Dev: `source .env.local` (gitignored). `.env.example` committed with placeholders.
 
 ## Boundary validation
 
-`Ecto.Changeset` + embedded schema, symmetric inbound and outbound. Contracts live under `lib/staff_forecast/<context>/contracts/`. Domain code never accepts raw `params` maps.
+`Ecto.Changeset` + embedded schema, symmetric inbound and outbound. Contracts live under `lib/__APP_NAME__/<context>/contracts/`. Domain code never accepts raw `params` maps.
 
 ## Pipeline
 
@@ -71,8 +71,8 @@ Standard `phx.gen.auth` — email/password with `current_scope`. No TFA or passk
 ## Known Gaps
 
 - No domain code. All contexts, Commands, Queries, Ports, Adapters, Contracts TBD.
-- `StaffForecast.Config` module not yet established.
-- `StaffForecast.Ctx` module not yet established.
+- `__APP_MODULE__.Config` module not yet established.
+- `__APP_MODULE__.Ctx` module not yet established.
 - `.env.example` not yet created.
 - No ADRs.
 - `mix precommit` alias needs expansion to the full nine-step pipeline (requires credo, dialyxir, sobelow deps).

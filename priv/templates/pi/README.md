@@ -1,4 +1,4 @@
-# 🧭 Pi wiring for StaffForecast
+# 🧭 Pi wiring for __APP_MODULE__
 
 Auto-discovered by [pi](https://pi.dev) from `cwd`. Nothing here needs to be installed — pi picks it up on startup.
 

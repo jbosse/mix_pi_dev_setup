@@ -41,9 +41,18 @@ export async function branchExists(pi: ExtensionAPI, branch: string): Promise<bo
 /**
  * Create (or switch to, if exists) the sprint branch. Idempotent so restart
  * after a crash mid-planning does the right thing.
+ *
+ * When Pi is launched inside a git worktree that already has the branch
+ * checked out, `git checkout` would fail because the branch is already
+ * current (or is checked out in another worktree). Guard against both cases
+ * by checking HEAD first and returning early if we're already on it.
  */
 export async function startSprintBranch(pi: ExtensionAPI, branch: string): Promise<void> {
 	return authorized(async () => {
+		// Already on this branch (e.g. launched inside a pre-created worktree).
+		const head = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+		if (head.stdout.trim() === branch) return;
+
 		if (await branchExists(pi, branch)) {
 			const { code, stderr } = await pi.exec("git", ["checkout", branch]);
 			if (code !== 0) throw new Error(`git checkout ${branch} failed: ${stderr}`);
@@ -62,6 +71,7 @@ export interface CommitInput {
 	storyRef: string;
 	gateSummary: string; // e.g. "Builder: ✅  Tester: ✅  ..."
 	files: string[]; // declared file ownership — `git add` scope
+	caseNumber?: string; // optional case/ticket number appended as the last line of the body
 }
 
 /**
@@ -115,10 +125,18 @@ export async function commitPlanning(
 
 // Does `path` fall under an ownership entry? Duplicated from guards.ts
 // deliberately — git.ts shouldn't import guards (one-way dependency).
+// Bidirectional: also matches when the dirty item is a parent *directory*
+// of a declared file (git reports untracked directories, not their contents,
+// when an entire new subdirectory is being created for the first time).
 function ownedBy(path: string, entry: string): boolean {
 	if (path === entry) return true;
-	const prefix = entry.endsWith("/") ? entry : `${entry}/`;
-	return path.startsWith(prefix);
+	// Standard: declared entry is a prefix of the dirty path.
+	const entryPrefix = entry.endsWith("/") ? entry : `${entry}/`;
+	if (path.startsWith(entryPrefix)) return true;
+	// Reverse: dirty item is a parent directory of the declared file.
+	const pathPrefix = path.endsWith("/") ? path : `${path}/`;
+	if (entry.startsWith(pathPrefix)) return true;
+	return false;
 }
 
 /**
@@ -148,10 +166,17 @@ export async function commitTask(pi: ExtensionAPI, input: CommitInput): Promise<
 			);
 		}
 
-		// Stage declared files plus any dirty sprint artifacts (audit trail:
-		// sprint-state.json transitions, per-task logs, sprint.log appends).
-		const addDeclared = await pi.exec("git", ["add", "--", ...input.files]);
-		if (addDeclared.code !== 0) throw new Error(`git add (declared) failed: ${addDeclared.stderr}`);
+		// Stage the actual dirty paths (all verified owned above) rather than
+		// the declared list verbatim — `git add` exits non-zero on a declared
+		// pathspec that matches nothing (e.g. "priv/repo/migrations/" when the
+		// task legitimately produced no migration), which would fail the commit.
+		const dirtyPaths = dirty
+			.filter(({ path }) => !path.startsWith(`${input.sprintRootRel}/`))
+			.map(({ path }) => path);
+		if (dirtyPaths.length > 0) {
+			const addDeclared = await pi.exec("git", ["add", "--", ...dirtyPaths]);
+			if (addDeclared.code !== 0) throw new Error(`git add (task files) failed: ${addDeclared.stderr}`);
+		}
 
 		const addArtifacts = await pi.exec("git", ["add", "--", input.sprintRootRel]);
 		if (addArtifacts.code !== 0) {
@@ -161,7 +186,8 @@ export async function commitTask(pi: ExtensionAPI, input: CommitInput): Promise<
 		const msg =
 			`[sprint/${input.sprintName}] ${input.taskId}: ${input.title}\n\n` +
 			`${input.storyRef}\n` +
-			`${input.gateSummary}\n`;
+			`${input.gateSummary}\n` +
+			(input.caseNumber ? `\n${input.caseNumber}\n` : "");
 
 		const commit = await pi.exec("git", ["commit", "-m", msg]);
 		if (commit.code !== 0) throw new Error(`git commit failed: ${commit.stderr}`);

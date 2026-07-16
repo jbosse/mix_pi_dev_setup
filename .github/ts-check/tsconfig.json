@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@mariozechner/pi-coding-agent": ["./node_modules/@mariozechner/pi-coding-agent/dist/index.d.ts"],
+      "typebox": [
+        "./node_modules/typebox",
+        "./node_modules/@mariozechner/pi-coding-agent/node_modules/typebox"
+      ]
+    }
+  },
+  "include": ["../../priv/templates/pi/extensions/sprint-orchestrator/*.ts"]
+}

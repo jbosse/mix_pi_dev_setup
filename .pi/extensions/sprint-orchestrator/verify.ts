@@ -12,6 +12,7 @@ export interface VerifyStep {
 	name: string;
 	cmd: string;
 	args: string[];
+	timeoutMs?: number;
 }
 
 export interface VerifyStepResult {
@@ -27,19 +28,17 @@ export interface VerifyResult {
 	failedStep?: string;
 }
 
-// Default verification steps from ORCHESTRATION.md "Verification steps"
-// section. Overridable via the tool call so sprints with a different
-// toolchain can swap in their own list without forking the extension.
+// The verification gate is `mix precommit` — the alias that `mix pi_dev_setup`
+// writes into the project's mix.exs (deps.get → compile → format → credo →
+// sobelow → ecto → dialyzer → test → assets). Running the alias, instead of
+// duplicating its steps here, keeps a single source of truth: customize the
+// pipeline by editing the `precommit:` alias in mix.exs and both the human
+// gate and this tool pick it up.
 //
-// PiDevSetup (Phoenix / Elixir) pipeline — keep in sync with
-// /docs/styleguide.md § Verification Gate.
+// Generous timeout: the first dialyzer run builds the PLT from scratch, which
+// on a real Phoenix app routinely takes longer than 10 minutes.
 export const DEFAULT_STEPS: VerifyStep[] = [
-	{ name: "deps", cmd: "mix", args: ["deps.get", "--check-locked"] },
-	{ name: "compile", cmd: "mix", args: ["compile", "--warnings-as-errors"] },
-	{ name: "format", cmd: "mix", args: ["format", "--check-formatted"] },
-	{ name: "ecto-migrate", cmd: "mix", args: ["do", "ecto.create,", "ecto.migrate"] },
-	{ name: "test", cmd: "mix", args: ["test", "--warnings-as-errors"] },
-	{ name: "assets", cmd: "mix", args: ["assets.build"] },
+	{ name: "precommit", cmd: "mix", args: ["precommit"], timeoutMs: 30 * 60 * 1000 },
 ];
 
 // Keep only the tail — full output gets dumped to the per-task log elsewhere.
@@ -55,7 +54,7 @@ export async function runVerify(
 ): Promise<VerifyResult> {
 	const results: VerifyStepResult[] = [];
 	for (const step of steps) {
-		const { stdout, stderr, code } = await pi.exec(step.cmd, step.args, { timeout: 10 * 60 * 1000 });
+		const { stdout, stderr, code } = await pi.exec(step.cmd, step.args, { timeout: step.timeoutMs ?? 10 * 60 * 1000 });
 		const result: VerifyStepResult = {
 			name: step.name,
 			exitCode: code ?? -1,

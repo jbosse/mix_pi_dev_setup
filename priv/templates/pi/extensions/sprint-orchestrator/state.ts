@@ -7,7 +7,7 @@
  * (no silent failure — see CLAUDE.md).
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import type { SprintPaths } from "./paths.js";
 
 // Gates mirror ORCHESTRATION.md's per-task sequence exactly. `done` is a
@@ -55,6 +55,20 @@ export interface SprintState {
 	// When a polish task is appended during final-review, we remember the phase
 	// we came from so we can flip back once the polish task is committed.
 	polishReturnPhase?: Phase;
+}
+
+// The forward gate sequence per ORCHESTRATION.md. `gate_pass` advances along
+// this list mechanically — agents report which gate they ran, never where to
+// go next, so a task can't be routed around a gate.
+export const GATE_SEQUENCE: Gate[] = ["builder", "tester", "reviewer", "security", "verify", "commit", "done"];
+
+/** The gate that follows `gate` in the forward sequence. Throws on `done`. */
+export function nextGate(gate: Gate): Gate {
+	const i = GATE_SEQUENCE.indexOf(gate);
+	if (i < 0 || i === GATE_SEQUENCE.length - 1) {
+		throw new Error(`no next gate after ${gate}`);
+	}
+	return GATE_SEQUENCE[i + 1];
 }
 
 // Legal gate transitions per ORCHESTRATION.md. Any edge not here is refused.
@@ -106,7 +120,12 @@ function migrateLegacyState(raw: Record<string, unknown>): SprintState {
 
 export function saveState(paths: SprintPaths, state: SprintState): void {
 	// Pretty-print so the file is diffable in git — the audit trail matters.
-	writeFileSync(paths.state, `${JSON.stringify(state, null, 2)}\n`);
+	// Write to a temp file and rename: rename is atomic on POSIX, so a crash
+	// mid-write can never leave a truncated/corrupt sprint-state.json behind
+	// (loadState hard-fails on corrupt state by design).
+	const tmp = `${paths.state}.tmp`;
+	writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`);
+	renameSync(tmp, paths.state);
 }
 
 export function findTask(state: SprintState, taskId: string): TaskState {

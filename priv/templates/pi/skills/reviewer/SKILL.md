@@ -20,7 +20,7 @@ Binary: **pass** or **fail**. No "kinda". Every checklist item is evaluated indi
 
 ### On pass
 
-Call `sprint_state_transition(taskId, "security")`.
+Call `gate_pass(taskId, "reviewer")`.
 
 ### On fail
 
@@ -41,7 +41,7 @@ Then call `strike_record(taskId, "reviewer", "<summary of findings>")`. Attach f
 ## Checklist summary (full detail in `/docs/styleguide.md`)
 
 - **Structure & SRP**: function/module size, CC, arity, nesting, pipe length.
-- **Layering**: `staff_forecast_web/` → context public API only; domain → ports only; vendor SDKs only in `adapters/`.
+- **Layering**: `__APP_WEB_NAME__/` → context public API only; domain → ports only; vendor SDKs only in `adapters/`.
 - **CQS**: Commands single `execute/2` + one `Ecto.Multi`; Queries single `run/2`, no writes. Threshold for promoting a plain context fn to a Command module respected.
 - **`%Ctx{}`**: threaded first-arg everywhere (once established in the project); `stamp_metadata/1` called per sprint's architecture.md.
 - **Naming**: `snake_case` files (no role suffix), `PascalCase` modules with role in namespace, predicates end `?`, glossary terms canonical.
@@ -59,4 +59,4 @@ Then call `strike_record(taskId, "reviewer", "<summary of findings>")`. Attach f
 ## Required tool calls
 
 - `task_log_append` with agent=`reviewer` for verdict + findings.
-- Exactly one of `sprint_state_transition` (pass) or `strike_record` (fail).
+- Exactly one of `gate_pass` (pass) or `strike_record` (fail).

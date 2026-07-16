@@ -22,7 +22,7 @@ Then consult the `styleguide-check` skill (injected into your agent shim) for th
 2. Write production code **only inside your task's declared file ownership** (`Files:` in `plan.md`). Ownership is not restricted to `/lib/` — it may include `/test/`, `/priv/repo/migrations/`, `/config/runtime.exs`, `/assets/`, etc., as PM declared. The extension blocks `write`/`edit` outside this list — if a block happens, stop and escalate to Orchestrator; do NOT "find another file".
 3. Self-audit against the reviewer checklist + styleguide.
 4. Draft a commit message (Orchestrator finalizes) in the format from `/docs/ORCHESTRATION.md`.
-5. Return. The `task-gates` chain will advance to the tester subagent automatically. Do not call `sprint_state_transition` yourself.
+5. Call `gate_pass(taskId, "builder")` to hand the task to the Tester, then return.
 
 ## Migrations, generators, and other bash-driven writes
 
@@ -51,4 +51,4 @@ Some changes come from `mix` generators (`mix ecto.gen.migration`, `mix phx.gen.
 ## Required tool calls
 
 - `task_log_append` with agent=`builder` for each meaningful step (start, draft, self-audit, handoff).
-- Do NOT call `sprint_state_transition` yourself — Tester moves the gate after verifying.
+- Call `gate_pass(taskId, "builder")` exactly once, when done — never any other gate, never `strike_record`.

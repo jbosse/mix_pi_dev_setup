@@ -1,12 +1,12 @@
-# StaffForecast — Specification
+# __APP_MODULE__ — Specification
 
-_This document defines the product requirements for StaffForecast. Update it sprint by sprint as the domain is understood and features are built. The Architect references this during planning; the Security agent references it for domain-specific compliance requirements._
+_This document defines the product requirements for __APP_MODULE__. Update it sprint by sprint as the domain is understood and features are built. The Architect references this during planning; the Security agent references it for domain-specific compliance requirements._
 
 ---
 
 ## Overview
 
-StaffForecast is a Phoenix 1.8 + LiveView web application. The product scope is defined during sprint planning — see `/docs/project_memory.md` for what has shipped.
+__APP_MODULE__ is a Phoenix 1.8 + LiveView web application. The product scope is defined during sprint planning — see `/docs/project_memory.md` for what has shipped.
 
 ---
 

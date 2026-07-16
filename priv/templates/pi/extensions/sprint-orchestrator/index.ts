@@ -24,6 +24,7 @@ import {
 	findTask,
 	loadState,
 	maybeCompletePhase,
+	nextGate,
 	readyToCommit,
 	recordStrike,
 	saveState,
@@ -32,6 +33,7 @@ import {
 	type Gate,
 	type SprintState,
 	type TaskSeedInput,
+	type TaskState,
 } from "./state.js";
 import { DEFAULT_STEPS, runVerify } from "./verify.js";
 
@@ -62,6 +64,79 @@ function getActiveSprint(ctx: ExtensionContext): { state: SprintState; paths: Sp
 	const state = readStateIfAny(paths);
 	if (!state) return undefined;
 	return { state, paths };
+}
+
+/**
+ * Record a gate failure and, on strike 4, halt the sprint. Shared by the
+ * strike_record tool and verify_run's automatic outcome handling so the
+ * halt rules live in exactly one place. Caller is responsible for saveState.
+ */
+function applyStrike(
+	state: SprintState,
+	paths: SprintPaths,
+	task: TaskState,
+	gate: Gate,
+	reason: string,
+): { strikes: number; halted: boolean } {
+	const strikes = recordStrike(task, gate, reason);
+	let halted = false;
+	if (strikes >= 4) {
+		state.halted = {
+			reason: `task ${task.id} reached strike 4 at gate ${gate}: ${reason}`,
+			at: new Date().toISOString(),
+			source: "strike-4",
+		};
+		halted = true;
+		console.error(`[sprint] HALT: ${state.halted.reason}`);
+	}
+	appendSprintLog(paths, `strike ${strikes} ${task.id} gate=${gate}${halted ? " HALTED" : ""}`);
+	return { strikes, halted };
+}
+
+/**
+ * Clear the halted flag, optionally resetting the in-flight task to the
+ * builder gate with a clean strike counter. Shared by the sprint_state_unhalt
+ * tool and the /sprint:unhalt command. Returns the reset task's id, if any.
+ */
+function performUnhalt(
+	state: SprintState,
+	paths: SprintPaths,
+	shouldResetTask: boolean,
+): string | undefined {
+	let taskReset: string | undefined;
+	if (shouldResetTask) {
+		// Find the in-flight task (the one that triggered the halt) and reset
+		// it so the orchestrator can re-run the gate chain from builder.
+		const inFlight = state.tasks.find((t) => t.gate !== "done");
+		if (inFlight) {
+			inFlight.gate = "builder";
+			inFlight.gates = {};
+			// Reset strike counter so we don't immediately re-halt.
+			inFlight.attempts = 0;
+			inFlight.strikes = [];
+			taskReset = inFlight.id;
+		}
+	}
+	delete state.halted;
+	saveState(paths, state);
+	return taskReset;
+}
+
+/**
+ * Seal the sprint branch for closing: flip phase to closed, commit the final
+ * sprint artifacts. Shared by sprint_merge and both /sprint:approve-close
+ * paths. Idempotent — commits only when the artifacts actually changed.
+ */
+async function commitClosedState(pi: ExtensionAPI, state: SprintState, paths: SprintPaths): Promise<void> {
+	state.phase = "closed";
+	saveState(paths, state);
+	const add = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
+	if (add.code !== 0) throw new Error(`git add sprint artifacts failed: ${add.stderr}`);
+	const diff = await pi.exec("git", ["diff", "--cached", "--quiet"]);
+	if (diff.code !== 0) {
+		const commit = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
+		if (commit.code !== 0) throw new Error(`close commit failed: ${commit.stderr}`);
+	}
 }
 
 /**
@@ -281,7 +356,7 @@ export default function (pi: ExtensionAPI) {
 							`For each task:\n` +
 							`  1. task_log_append(taskId, "orchestrator", 1, "assigned")\n` +
 							`  2. subagent({ chain: "task-gates", task: taskId })\n` +
-							`  3. verify_run\n` +
+							`  3. verify_run   (green auto-advances the task to commit; red auto-records a strike)\n` +
 							`  4. commit_task(taskId)\n` +
 							`  5. Move to next task\n\n` +
 							`Start with the first task in plan.md now.`,
@@ -329,28 +404,40 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "sprint_state_transition",
-		label: "Sprint state transition",
+		name: "gate_pass",
+		label: "Gate pass",
 		description:
-			"Advance a task to the next gate after a PASS. Refuses illegal transitions. " +
-			"Refuses if phase is not 'development' — tasks cannot be advanced until the plan is approved and seeded.",
+			"Report that a gate PASSED for a task. The tool advances the task to the next gate mechanically " +
+			"(builder → tester → reviewer → security → verify → commit) — agents report which gate they ran, " +
+			"never where to go next, so a task cannot be routed around a gate. " +
+			"Refuses if `gate` is not the task's current gate, and if phase is not 'development'.",
 		parameters: Type.Object({
 			taskId: Type.String(),
-			to: Type.String({ description: "Target gate: tester|reviewer|security|verify|commit|done" }),
+			gate: Type.String({ description: "The gate you just completed: builder|tester|reviewer|security|verify" }),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { state, paths } = requireActive(ctx.cwd);
 			if (state.phase !== "development") {
 				throw new Error(
-					`sprint_state_transition refused: phase is '${state.phase}', expected 'development'. ` +
+					`gate_pass refused: phase is '${state.phase}', expected 'development'. ` +
 					`Tasks cannot run until the plan is approved (/sprint:approve-planning) and seeded (sprint_tasks_seed).`,
 				);
 			}
 			const task = findTask(state, params.taskId as string);
-			transition(task, params.to as Gate);
+			const gate = params.gate as Gate;
+			if (gate === "commit" || gate === "done") {
+				throw new Error(`gate_pass refused: '${gate}' is not a reportable gate — commits go through commit_task.`);
+			}
+			if (task.gate !== gate) {
+				throw new Error(
+					`gate_pass refused: ${task.id} is at gate '${task.gate}', but you reported '${gate}' passed. ` +
+					`Only the task's current gate can be passed — run the '${task.gate}' gate (or strike_record its failure).`,
+				);
+			}
+			transition(task, nextGate(gate));
 			saveState(paths, state);
-			appendSprintLog(paths, `transition ${task.id} -> ${task.gate}`);
-			return { content: [{ type: "text", text: `${task.id} -> ${task.gate}` }], details: {} };
+			appendSprintLog(paths, `gate_pass ${task.id} ${gate} -> ${task.gate}`);
+			return { content: [{ type: "text", text: `${task.id}: ${gate} passed → now at ${task.gate}` }], details: {} };
 		},
 	});
 
@@ -384,19 +471,8 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { state, paths } = requireActive(ctx.cwd);
 			const task = findTask(state, params.taskId as string);
-			const strikes = recordStrike(task, params.gate as Gate, params.reason as string);
-			let halted = false;
-			if (strikes >= 4) {
-				state.halted = {
-					reason: `task ${task.id} reached strike 4 at gate ${params.gate}: ${params.reason}`,
-					at: new Date().toISOString(),
-					source: "strike-4",
-				};
-				halted = true;
-				console.error(`[sprint] HALT: ${state.halted.reason}`);
-			}
+			const { strikes, halted } = applyStrike(state, paths, task, params.gate as Gate, params.reason as string);
 			saveState(paths, state);
-			appendSprintLog(paths, `strike ${strikes} ${task.id} gate=${params.gate}${halted ? " HALTED" : ""}`);
 			return {
 				content: [
 					{
@@ -442,24 +518,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			const haltSource = state.halted.source ?? "manual";
 			const shouldResetTask = (params.resetTask as boolean | undefined) ?? (haltSource === "strike-4");
-
-			let taskReset: string | undefined;
-			if (shouldResetTask) {
-				// Find the in-flight task (the one that triggered the halt) and reset
-				// it so the orchestrator can re-run the gate chain from builder.
-				const inFlight = state.tasks.find((t) => t.gate !== "done");
-				if (inFlight) {
-					inFlight.gate = "builder";
-					inFlight.gates = {};
-					// Reset strike counter so we don't immediately re-halt.
-					inFlight.attempts = 0;
-					inFlight.strikes = [];
-					taskReset = inFlight.id;
-				}
-			}
-
-			delete state.halted;
-			saveState(paths, state);
+			const taskReset = performUnhalt(state, paths, shouldResetTask);
 			appendSprintLog(paths, `unhalt: ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
 
 			return {
@@ -482,7 +541,9 @@ export default function (pi: ExtensionAPI) {
 		name: "verify_run",
 		label: "Verify run",
 		description:
-			"Runs the deterministic verification pipeline (install/build/test/lint/types). Gate 4 — nothing commits until this is green.",
+			"Runs the deterministic verification pipeline (`mix precommit`). Gate 4 — nothing commits until this is green. " +
+			"When the in-flight task is at the verify gate, the outcome is applied automatically: " +
+			"green advances the task to commit, red records a verify strike (task resets to builder).",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			const { state, paths } = requireActive(ctx.cwd);
@@ -491,16 +552,41 @@ export default function (pi: ExtensionAPI) {
 				paths,
 				`verify ${result.ok ? "PASS" : `FAIL@${result.failedStep}`} (${result.steps.length} steps)`,
 			);
-			// We don't mutate state here — the caller (skill/orchestrator) decides
-			// whether to transition forward or record a strike. Keeps verify pure.
-			void state;
+
+			// Apply the outcome mechanically when a task is sitting at the verify
+			// gate — the orchestrator can't forget (or decline) to record it.
+			// Outside that case (e.g. ad-hoc runs during planning) verify stays pure.
+			const current = state.phase === "development" ? state.tasks.find((t) => t.gate !== "done") : undefined;
+			let stateNote = "";
+			if (current && current.gate === "verify") {
+				if (result.ok) {
+					transition(current, "commit");
+					appendSprintLog(paths, `gate_pass ${current.id} verify -> commit (auto)`);
+					stateNote = `\n${current.id} advanced to commit — call commit_task("${current.id}") now.`;
+				} else {
+					const { strikes, halted } = applyStrike(
+						state,
+						paths,
+						current,
+						"verify",
+						`verify failed at ${result.failedStep}`,
+					);
+					stateNote = halted
+						? `\nSTRIKE 4 — SPRINT HALTED. Surface to human with logs + diff.`
+						: strikes === 3
+							? `\nSTRIKE 3 on ${current.id} — pull in architect before builder retry.`
+							: `\nStrike ${strikes}/4 on ${current.id} — task reset to builder; relaunch builder with the failure output.`;
+				}
+				saveState(paths, state);
+			}
 			return {
 				content: [
 					{
 						type: "text",
-						text: result.ok
-							? `✅ verify green (${result.steps.map((s) => s.name).join(", ")})`
-							: `❌ verify failed at "${result.failedStep}"`,
+						text:
+							(result.ok
+								? `✅ verify green (${result.steps.map((s) => s.name).join(", ")})`
+								: `❌ verify failed at "${result.failedStep}"`) + stateNote,
 					},
 				],
 				details: result,
@@ -579,18 +665,12 @@ export default function (pi: ExtensionAPI) {
 			if (state.phase !== "final-review") {
 				throw new Error(`cannot merge: phase is ${state.phase}, expected final-review`);
 			}
+			// Consolidate task logs first so the merge diff shows sprint-tasks.log
+			// instead of N individual files (same as /sprint:approve-close).
+			await runConsolidateLogs(pi, paths, state);
 			// Commit phase=closed to the sprint branch before merging,
 			// so the sprint artifacts are complete in the branch history.
-			state.phase = "closed";
-			saveState(paths, state);
-			const { stdout: addOut, code: addCode, stderr: addErr } = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
-			void addOut;
-			if (addCode !== 0) throw new Error(`git add sprint artifacts failed: ${addErr}`);
-			const diffResult = await pi.exec("git", ["diff", "--cached", "--quiet"]);
-			if (diffResult.code !== 0) {
-				const closeCommit = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
-				if (closeCommit.code !== 0) throw new Error(`close commit failed: ${closeCommit.stderr}`);
-			}
+			await commitClosedState(pi, state, paths);
 			const sha = await mergeSprint(pi, state.branch);
 			return { content: [{ type: "text", text: `merged ${state.branch} → main @ ${sha}` }], details: { sha } };
 		},
@@ -695,15 +775,7 @@ export default function (pi: ExtensionAPI) {
 
 				ctx.ui.notify("Merging sprint branch into main locally…", "info");
 				// Commit phase=closed to sprint branch before merging.
-				state.phase = "closed";
-				saveState(paths, state);
-				const { code: ac, stderr: ae } = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
-				if (ac !== 0) throw new Error(`git add failed: ${ae}`);
-				const df = await pi.exec("git", ["diff", "--cached", "--quiet"]);
-				if (df.code !== 0) {
-					const cc = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
-					if (cc.code !== 0) throw new Error(`close commit failed: ${cc.stderr}`);
-				}
+				await commitClosedState(pi, state, paths);
 				const sha = await mergeSprint(pi, state.branch);
 				ctx.ui.notify(`Sprint closed. Merged ${state.branch} → main @ ${sha.slice(0, 7)}.`, "info");
 				return;
@@ -726,15 +798,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Commit phase=closed to sprint branch before pushing/PR.
-			state.phase = "closed";
-			saveState(paths, state);
-			const { code: pac, stderr: pae } = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
-			if (pac !== 0) throw new Error(`git add failed: ${pae}`);
-			const pdf = await pi.exec("git", ["diff", "--cached", "--quiet"]);
-			if (pdf.code !== 0) {
-				const pcc = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
-				if (pcc.code !== 0) throw new Error(`close commit failed: ${pcc.stderr}`);
-			}
+			await commitClosedState(pi, state, paths);
 			ctx.ui.notify(`Pushing ${state.branch} to origin…`, "info");
 			await pushBranch(pi, state.branch);
 
@@ -782,20 +846,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			const haltSource = state.halted.source ?? "manual";
-			const shouldResetTask = haltSource === "strike-4";
-			let taskReset: string | undefined;
-			if (shouldResetTask) {
-				const inFlight = state.tasks.find((t) => t.gate !== "done");
-				if (inFlight) {
-					inFlight.gate = "builder";
-					inFlight.gates = {};
-					inFlight.attempts = 0;
-					inFlight.strikes = [];
-					taskReset = inFlight.id;
-				}
-			}
-			delete state.halted;
-			saveState(paths, state);
+			const taskReset = performUnhalt(state, paths, haltSource === "strike-4");
 			appendSprintLog(paths, `unhalt (command): ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
 			ctx.ui.notify(
 				`Sprint unhalted.${taskReset ? ` Task ${taskReset} reset to builder — re-run the gate chain.` : ""} Reason: ${reason}`,

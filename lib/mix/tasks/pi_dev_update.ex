@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.PiDevUpdate do
   use Mix.Task
-  import Bitwise, only: [bor: 2]
+
+  alias PiDevSetup.Templates
+
   @shortdoc "Updates Pi.dev agent/skill/chain/extension files to the latest templates"
 
   @moduledoc """
@@ -54,36 +56,24 @@ defmodule Mix.Tasks.PiDevUpdate do
 
     app_name = config[:app] |> Atom.to_string()
     app_module = Macro.camelize(app_name)
-    today = Date.utc_today() |> Date.to_iso8601()
-
-    substitutions = [
-      {"StaffForecastWeb", "#{app_module}Web"},
-      {"StaffForecast", app_module},
-      {"staff_forecast_web", "#{app_name}_web"},
-      {"staff_forecast", app_name},
-      {"__GENERATED_DATE__", today}
-    ]
-
-    template_dir = :code.priv_dir(:pi_dev_setup) |> List.to_string() |> Path.join("templates")
-
-    mappings = updatable_file_mappings()
+    substitutions = Templates.substitutions(app_name)
+    mappings = Templates.updatable_file_mappings()
 
     if dry_run? do
-      run_dry(mappings, template_dir, substitutions)
+      run_dry(mappings, substitutions)
     else
-      run_update(mappings, template_dir, substitutions, app_module, force?)
+      run_update(mappings, substitutions, app_module, force?)
     end
   end
 
   # ── Dry-run: show what would change ─────────────────────────────────────
 
-  defp run_dry(mappings, template_dir, substitutions) do
+  defp run_dry(mappings, substitutions) do
     Mix.shell().info("\nDry run — no files will be written.\n")
 
     {changed, unchanged, missing} =
       Enum.reduce(mappings, {[], [], []}, fn {template_rel, dest}, {ch, unch, miss} ->
-        template_path = Path.join(template_dir, template_rel)
-        new_content = File.read!(template_path) |> apply_substitutions(substitutions)
+        new_content = Templates.render(template_rel, substitutions)
 
         cond do
           not File.exists?(dest) -> {ch, unch, [dest | miss]}
@@ -109,7 +99,7 @@ defmodule Mix.Tasks.PiDevUpdate do
 
   # ── Real update ──────────────────────────────────────────────────────────
 
-  defp run_update(mappings, template_dir, substitutions, app_module, force?) do
+  defp run_update(mappings, substitutions, app_module, force?) do
     Mix.shell().info("\nUpdating Pi.dev tooling for #{app_module}…\n")
 
     unless force? do
@@ -126,8 +116,7 @@ defmodule Mix.Tasks.PiDevUpdate do
 
     results =
       Enum.map(mappings, fn {template_rel, dest} ->
-        template_path = Path.join(template_dir, template_rel)
-        new_content = File.read!(template_path) |> apply_substitutions(substitutions)
+        new_content = Templates.render(template_rel, substitutions)
 
         cond do
           not File.exists?(dest) ->
@@ -153,10 +142,10 @@ defmodule Mix.Tasks.PiDevUpdate do
     Enum.each(unchanged, &Mix.shell().info([:light_black, "* no change", :reset, " #{&1}"]))
 
     # Ensure scripts are executable whether newly created or updated
-    make_executable(["spawn-agent", "remove-agent"])
+    Templates.make_executable(Templates.executables())
 
     # Patch .gitignore with sprint artifact patterns (idempotent)
-    patch_gitignore()
+    Templates.patch_gitignore()
 
     Mix.shell().info("""
 
@@ -165,109 +154,5 @@ defmodule Mix.Tasks.PiDevUpdate do
 
     Restart Pi to pick up the new agent/skill/chain definitions.
     """)
-  end
-
-  # ── .gitignore patching ──────────────────────────────────────────────────
-
-  @sprint_gitignore_patterns """
-  # Sprint planning working docs (intermediate — not committed to the repo)
-  # Only sprint-review.md and qa-script.md are committed; everything else is ephemeral.
-  docs/sprint/*/logs/
-  docs/sprint/*/sprint-state.json
-  docs/sprint/*/sprint.log
-  docs/sprint/*/planning-summary.md
-  docs/sprint/*/architecture.md
-  docs/sprint/*/plan.md
-  docs/sprint/*/spec.md
-  docs/sprint/*/user-stories.md
-  docs/sprint/*/reviewer-checklist.md
-  """
-
-  @sprint_gitignore_sentinel "docs/sprint/*/logs/"
-
-  defp patch_gitignore do
-    path = ".gitignore"
-    existing = if File.exists?(path), do: File.read!(path), else: ""
-
-    if String.contains?(existing, @sprint_gitignore_sentinel) do
-      Mix.shell().info([:light_black, "* no change", :reset, " #{path} (sprint patterns already present)"])
-    else
-      separator = if String.ends_with?(existing, "\n") or existing == "", do: "", else: "\n"
-      File.write!(path, existing <> separator <> "\n" <> @sprint_gitignore_patterns)
-      Mix.shell().info([:green, "* updated  ", :reset, "#{path} (sprint artifact patterns added)"])
-    end
-  end
-
-  # ── Make scripts executable ────────────────────────────────────────────
-
-  defp make_executable(paths) do
-    Enum.each(paths, fn path ->
-      if File.exists?(path) do
-        current = File.stat!(path).mode
-        File.chmod!(path, bor(current, 0o111))
-      end
-    end)
-  end
-
-  # ── Substitution ─────────────────────────────────────────────────────────
-
-  defp apply_substitutions(content, substitutions) do
-    Enum.reduce(substitutions, content, fn {from, to}, acc ->
-      String.replace(acc, from, to)
-    end)
-  end
-
-  # ── Files to update (agents / skills / chains / extension source only) ───
-
-  defp updatable_file_mappings do
-    [
-      # .pi/agents/
-      {"pi/agents/architect-final.md", ".pi/agents/architect-final.md"},
-      {"pi/agents/architect.md", ".pi/agents/architect.md"},
-      {"pi/agents/builder.md", ".pi/agents/builder.md"},
-      {"pi/agents/pm.md", ".pi/agents/pm.md"},
-      {"pi/agents/product-owner.md", ".pi/agents/product-owner.md"},
-      {"pi/agents/reviewer.md", ".pi/agents/reviewer.md"},
-      {"pi/agents/security.md", ".pi/agents/security.md"},
-      {"pi/agents/tester-planning.md", ".pi/agents/tester-planning.md"},
-      {"pi/agents/tester.md", ".pi/agents/tester.md"},
-
-      # .pi/chains/
-      {"pi/chains/task-gates.chain.md", ".pi/chains/task-gates.chain.md"},
-
-      # .pi/skills/
-      {"pi/skills/architect/SKILL.md", ".pi/skills/architect/SKILL.md"},
-      {"pi/skills/builder/SKILL.md", ".pi/skills/builder/SKILL.md"},
-      {"pi/skills/orchestrator/SKILL.md", ".pi/skills/orchestrator/SKILL.md"},
-      {"pi/skills/planning-interview/SKILL.md", ".pi/skills/planning-interview/SKILL.md"},
-      {"pi/skills/pm/SKILL.md", ".pi/skills/pm/SKILL.md"},
-      {"pi/skills/product-owner/SKILL.md", ".pi/skills/product-owner/SKILL.md"},
-      {"pi/skills/reviewer/SKILL.md", ".pi/skills/reviewer/SKILL.md"},
-      {"pi/skills/security/SKILL.md", ".pi/skills/security/SKILL.md"},
-      {"pi/skills/styleguide-check/SKILL.md", ".pi/skills/styleguide-check/SKILL.md"},
-      {"pi/skills/tester/SKILL.md", ".pi/skills/tester/SKILL.md"},
-
-      # .pi/extensions/sprint-orchestrator/
-      {"pi/extensions/sprint-orchestrator/README.md",
-       ".pi/extensions/sprint-orchestrator/README.md"},
-      {"pi/extensions/sprint-orchestrator/git.ts",
-       ".pi/extensions/sprint-orchestrator/git.ts"},
-      {"pi/extensions/sprint-orchestrator/guards.ts",
-       ".pi/extensions/sprint-orchestrator/guards.ts"},
-      {"pi/extensions/sprint-orchestrator/index.ts",
-       ".pi/extensions/sprint-orchestrator/index.ts"},
-      {"pi/extensions/sprint-orchestrator/paths.ts",
-       ".pi/extensions/sprint-orchestrator/paths.ts"},
-      {"pi/extensions/sprint-orchestrator/state.ts",
-       ".pi/extensions/sprint-orchestrator/state.ts"},
-      {"pi/extensions/sprint-orchestrator/tsconfig.json",
-       ".pi/extensions/sprint-orchestrator/tsconfig.json"},
-      {"pi/extensions/sprint-orchestrator/verify.ts",
-       ".pi/extensions/sprint-orchestrator/verify.ts"},
-
-      # Worktree lifecycle scripts (repo root)
-      {"spawn-agent", "spawn-agent"},
-      {"remove-agent", "remove-agent"}
-    ]
   end
 end

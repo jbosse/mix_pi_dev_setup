@@ -13,6 +13,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { appendFileSync, existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+
 import { join } from "node:path";
 import { Type } from "typebox";
 import { commitLogsConsolidation, commitPlanning, commitTask, createPullRequest, currentBranch, mergeSprint, pushBranch, startSprintBranch } from "./git.js";
@@ -23,6 +24,7 @@ import {
 	findTask,
 	loadState,
 	maybeCompletePhase,
+	nextGate,
 	readyToCommit,
 	recordStrike,
 	saveState,
@@ -31,6 +33,7 @@ import {
 	type Gate,
 	type SprintState,
 	type TaskSeedInput,
+	type TaskState,
 } from "./state.js";
 import { DEFAULT_STEPS, runVerify } from "./verify.js";
 
@@ -61,6 +64,79 @@ function getActiveSprint(ctx: ExtensionContext): { state: SprintState; paths: Sp
 	const state = readStateIfAny(paths);
 	if (!state) return undefined;
 	return { state, paths };
+}
+
+/**
+ * Record a gate failure and, on strike 4, halt the sprint. Shared by the
+ * strike_record tool and verify_run's automatic outcome handling so the
+ * halt rules live in exactly one place. Caller is responsible for saveState.
+ */
+function applyStrike(
+	state: SprintState,
+	paths: SprintPaths,
+	task: TaskState,
+	gate: Gate,
+	reason: string,
+): { strikes: number; halted: boolean } {
+	const strikes = recordStrike(task, gate, reason);
+	let halted = false;
+	if (strikes >= 4) {
+		state.halted = {
+			reason: `task ${task.id} reached strike 4 at gate ${gate}: ${reason}`,
+			at: new Date().toISOString(),
+			source: "strike-4",
+		};
+		halted = true;
+		console.error(`[sprint] HALT: ${state.halted.reason}`);
+	}
+	appendSprintLog(paths, `strike ${strikes} ${task.id} gate=${gate}${halted ? " HALTED" : ""}`);
+	return { strikes, halted };
+}
+
+/**
+ * Clear the halted flag, optionally resetting the in-flight task to the
+ * builder gate with a clean strike counter. Shared by the sprint_state_unhalt
+ * tool and the /sprint:unhalt command. Returns the reset task's id, if any.
+ */
+function performUnhalt(
+	state: SprintState,
+	paths: SprintPaths,
+	shouldResetTask: boolean,
+): string | undefined {
+	let taskReset: string | undefined;
+	if (shouldResetTask) {
+		// Find the in-flight task (the one that triggered the halt) and reset
+		// it so the orchestrator can re-run the gate chain from builder.
+		const inFlight = state.tasks.find((t) => t.gate !== "done");
+		if (inFlight) {
+			inFlight.gate = "builder";
+			inFlight.gates = {};
+			// Reset strike counter so we don't immediately re-halt.
+			inFlight.attempts = 0;
+			inFlight.strikes = [];
+			taskReset = inFlight.id;
+		}
+	}
+	delete state.halted;
+	saveState(paths, state);
+	return taskReset;
+}
+
+/**
+ * Seal the sprint branch for closing: flip phase to closed, commit the final
+ * sprint artifacts. Shared by sprint_merge and both /sprint:approve-close
+ * paths. Idempotent — commits only when the artifacts actually changed.
+ */
+async function commitClosedState(pi: ExtensionAPI, state: SprintState, paths: SprintPaths): Promise<void> {
+	state.phase = "closed";
+	saveState(paths, state);
+	const add = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
+	if (add.code !== 0) throw new Error(`git add sprint artifacts failed: ${add.stderr}`);
+	const diff = await pi.exec("git", ["diff", "--cached", "--quiet"]);
+	if (diff.code !== 0) {
+		const commit = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
+		if (commit.code !== 0) throw new Error(`close commit failed: ${commit.stderr}`);
+	}
 }
 
 /**
@@ -158,20 +234,28 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Create sprint/{name} branch, scaffold /docs/sprint/{name}/, init sprint-state.json. " +
 			"Requires interviewConfirmed=true — the planning interview MUST complete and receive human " +
-			"confirmation before this tool is called. Refuses otherwise.",
+			"confirmation before this tool is called. Refuses otherwise. " +
+			"If a caseNumber is provided, the sprint name is prefixed with it (e.g. caseNumber=64123 + name=fix-sorting → 64123-fix-sorting).",
 		parameters: Type.Object({
-			name: Type.String({ description: "Sprint name (kebab-case)" }),
+			name: Type.String({ description: "Sprint name (kebab-case, without case number prefix — the tool adds the prefix)" }),
 			goal: Type.String({ description: "One-line sprint goal" }),
 			interviewConfirmed: Type.Boolean({
 				description:
 					"MUST be true. Set only after /skill:planning-interview has run and the human confirmed the scope summary. " +
 					"If you have not run the planning interview, you MUST do so before calling this tool.",
 			}),
+			caseNumber: Type.Optional(Type.String({
+				description:
+					"Optional case/ticket number (digits only, e.g. \"64123\"). When provided, prefixes the sprint name " +
+					"(e.g. \"64123-fix-sorting\"), is appended as the last line of every task commit message, " +
+					"and becomes the leading token in the PR title.",
+			})),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const name = params.name as string;
+			const rawName = params.name as string;
 			const goal = params.goal as string;
 			const confirmed = params.interviewConfirmed as boolean;
+			const caseNumber = ((params.caseNumber as string | undefined) ?? "").trim() || undefined;
 			if (!confirmed) {
 				throw new Error(
 					"sprint_start refused: interviewConfirmed is false. " +
@@ -179,6 +263,8 @@ export default function (pi: ExtensionAPI) {
 					"This is non-negotiable — see ORCHESTRATION.md § Planning Phase.",
 				);
 			}
+			// Prefix the sprint name with the case number if one was provided.
+			const name = caseNumber ? `${caseNumber}-${rawName}` : rawName;
 			const paths = sprintPaths(ctx.cwd, name);
 			ensureSprintDirs(paths);
 			await startSprintBranch(pi, `sprint/${name}`);
@@ -188,19 +274,21 @@ export default function (pi: ExtensionAPI) {
 					branch: `sprint/${name}`,
 					phase: "planning",
 					createdAt: new Date().toISOString(),
+					...(caseNumber ? { caseNumber } : {}),
 					tasks: [],
 				};
 				saveState(paths, state);
 				writeFileSync(paths.sprintLog, `# Sprint: ${name}\nGoal: ${goal}\n`);
 			}
 			ACTIVE_SPRINT = name;
-			appendSprintLog(paths, `sprint_start name=${name}`);
+			appendSprintLog(paths, `sprint_start name=${name}${caseNumber ? ` caseNumber=${caseNumber}` : ""}`);
 			return {
 				content: [{
 					type: "text",
 					text:
-						`Sprint ${name} ready on branch sprint/${name}. Phase: planning.\n\n` +
-						`NEXT STEPS (in order — do NOT skip ahead to development):\n` +
+						`Sprint ${name} ready on branch sprint/${name}. Phase: planning.` +
+						(caseNumber ? `\nCase number: ${caseNumber} (will be appended to every commit and the PR title).` : "") +
+						`\n\nNEXT STEPS (in order — do NOT skip ahead to development):\n` +
 						`1. subagent(product-owner, mode 1) → writes user-stories.md ONLY\n` +
 						`2. ✋ STOP — read user-stories.md, show to human, wait for approval\n` +
 						`3. subagent(product-owner, mode 2) → writes qa-script.md skeleton\n` +
@@ -213,7 +301,7 @@ export default function (pi: ExtensionAPI) {
 						`10. ONLY THEN does development begin.\n\n` +
 						`Do step 1 now: spawn subagent(product-owner) in mode 1 (user stories only, NOT qa-script).`,
 				}],
-				details: {},
+				details: { name, caseNumber: caseNumber ?? null },
 			};
 		},
 	});
@@ -268,7 +356,7 @@ export default function (pi: ExtensionAPI) {
 							`For each task:\n` +
 							`  1. task_log_append(taskId, "orchestrator", 1, "assigned")\n` +
 							`  2. subagent({ chain: "task-gates", task: taskId })\n` +
-							`  3. verify_run\n` +
+							`  3. verify_run   (green auto-advances the task to commit; red auto-records a strike)\n` +
 							`  4. commit_task(taskId)\n` +
 							`  5. Move to next task\n\n` +
 							`Start with the first task in plan.md now.`,
@@ -316,28 +404,40 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "sprint_state_transition",
-		label: "Sprint state transition",
+		name: "gate_pass",
+		label: "Gate pass",
 		description:
-			"Advance a task to the next gate after a PASS. Refuses illegal transitions. " +
-			"Refuses if phase is not 'development' — tasks cannot be advanced until the plan is approved and seeded.",
+			"Report that a gate PASSED for a task. The tool advances the task to the next gate mechanically " +
+			"(builder → tester → reviewer → security → verify → commit) — agents report which gate they ran, " +
+			"never where to go next, so a task cannot be routed around a gate. " +
+			"Refuses if `gate` is not the task's current gate, and if phase is not 'development'.",
 		parameters: Type.Object({
 			taskId: Type.String(),
-			to: Type.String({ description: "Target gate: tester|reviewer|security|verify|commit|done" }),
+			gate: Type.String({ description: "The gate you just completed: builder|tester|reviewer|security|verify" }),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { state, paths } = requireActive(ctx.cwd);
 			if (state.phase !== "development") {
 				throw new Error(
-					`sprint_state_transition refused: phase is '${state.phase}', expected 'development'. ` +
+					`gate_pass refused: phase is '${state.phase}', expected 'development'. ` +
 					`Tasks cannot run until the plan is approved (/sprint:approve-planning) and seeded (sprint_tasks_seed).`,
 				);
 			}
 			const task = findTask(state, params.taskId as string);
-			transition(task, params.to as Gate);
+			const gate = params.gate as Gate;
+			if (gate === "commit" || gate === "done") {
+				throw new Error(`gate_pass refused: '${gate}' is not a reportable gate — commits go through commit_task.`);
+			}
+			if (task.gate !== gate) {
+				throw new Error(
+					`gate_pass refused: ${task.id} is at gate '${task.gate}', but you reported '${gate}' passed. ` +
+					`Only the task's current gate can be passed — run the '${task.gate}' gate (or strike_record its failure).`,
+				);
+			}
+			transition(task, nextGate(gate));
 			saveState(paths, state);
-			appendSprintLog(paths, `transition ${task.id} -> ${task.gate}`);
-			return { content: [{ type: "text", text: `${task.id} -> ${task.gate}` }], details: {} };
+			appendSprintLog(paths, `gate_pass ${task.id} ${gate} -> ${task.gate}`);
+			return { content: [{ type: "text", text: `${task.id}: ${gate} passed → now at ${task.gate}` }], details: {} };
 		},
 	});
 
@@ -371,18 +471,8 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const { state, paths } = requireActive(ctx.cwd);
 			const task = findTask(state, params.taskId as string);
-			const strikes = recordStrike(task, params.gate as Gate, params.reason as string);
-			let halted = false;
-			if (strikes >= 4) {
-				state.halted = {
-					reason: `task ${task.id} reached strike 4 at gate ${params.gate}: ${params.reason}`,
-					at: new Date().toISOString(),
-				};
-				halted = true;
-				console.error(`[sprint] HALT: ${state.halted.reason}`);
-			}
+			const { strikes, halted } = applyStrike(state, paths, task, params.gate as Gate, params.reason as string);
 			saveState(paths, state);
-			appendSprintLog(paths, `strike ${strikes} ${task.id} gate=${params.gate}${halted ? " HALTED" : ""}`);
 			return {
 				content: [
 					{
@@ -400,10 +490,60 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
+		name: "sprint_state_unhalt",
+		label: "Sprint state unhalt",
+		description:
+			"Clear the halted flag so the sprint can resume. " +
+			"Use after a human-approved fix resolves the blocking issue. " +
+			"Requires a non-empty reason describing what was fixed and who approved it. " +
+			"If haltSource is 'strike-4', also resets the in-flight task's strike counter and gate back to 'builder' " +
+			"so it re-enters the gate chain cleanly (the human approved a direct fix). " +
+			"If haltSource is 'manual', only clears the flag — no task state is touched.",
+		parameters: Type.Object({
+			reason: Type.String({ description: "What was fixed and who approved it (required, non-empty)" }),
+			resetTask: Type.Optional(Type.Boolean({
+				description:
+					"When true (default for strike-4 halts): reset the in-flight task's strikes/gate back to builder. " +
+					"Set false only when the human-approved fix already advanced the task past the failing gate.",
+			})),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const { state, paths } = requireActive(ctx.cwd);
+			if (!state.halted) {
+				throw new Error("sprint is not halted — nothing to unhalt");
+			}
+			const reason = (params.reason as string).trim();
+			if (!reason) {
+				throw new Error("sprint_state_unhalt requires a non-empty reason describing the fix and who approved it");
+			}
+			const haltSource = state.halted.source ?? "manual";
+			const shouldResetTask = (params.resetTask as boolean | undefined) ?? (haltSource === "strike-4");
+			const taskReset = performUnhalt(state, paths, shouldResetTask);
+			appendSprintLog(paths, `unhalt: ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
+
+			return {
+				content: [
+					{
+						type: "text",
+						text:
+							`Sprint unhalted. Reason: ${reason}.` +
+							(taskReset
+								? `\nTask ${taskReset} reset to builder gate (strikes cleared).\nRe-run the gate chain: subagent({ chain: "task-gates", task: "${taskReset}" })`
+								: `\nNo task state was changed. Resume the sprint where it left off.`),
+					},
+				],
+				details: { haltSource, taskReset: taskReset ?? null },
+			};
+		},
+	});
+
+	pi.registerTool({
 		name: "verify_run",
 		label: "Verify run",
 		description:
-			"Runs the deterministic verification pipeline (install/build/test/lint/types). Gate 4 — nothing commits until this is green.",
+			"Runs the deterministic verification pipeline (`mix precommit`). Gate 4 — nothing commits until this is green. " +
+			"When the in-flight task is at the verify gate, the outcome is applied automatically: " +
+			"green advances the task to commit, red records a verify strike (task resets to builder).",
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			const { state, paths } = requireActive(ctx.cwd);
@@ -412,16 +552,41 @@ export default function (pi: ExtensionAPI) {
 				paths,
 				`verify ${result.ok ? "PASS" : `FAIL@${result.failedStep}`} (${result.steps.length} steps)`,
 			);
-			// We don't mutate state here — the caller (skill/orchestrator) decides
-			// whether to transition forward or record a strike. Keeps verify pure.
-			void state;
+
+			// Apply the outcome mechanically when a task is sitting at the verify
+			// gate — the orchestrator can't forget (or decline) to record it.
+			// Outside that case (e.g. ad-hoc runs during planning) verify stays pure.
+			const current = state.phase === "development" ? state.tasks.find((t) => t.gate !== "done") : undefined;
+			let stateNote = "";
+			if (current && current.gate === "verify") {
+				if (result.ok) {
+					transition(current, "commit");
+					appendSprintLog(paths, `gate_pass ${current.id} verify -> commit (auto)`);
+					stateNote = `\n${current.id} advanced to commit — call commit_task("${current.id}") now.`;
+				} else {
+					const { strikes, halted } = applyStrike(
+						state,
+						paths,
+						current,
+						"verify",
+						`verify failed at ${result.failedStep}`,
+					);
+					stateNote = halted
+						? `\nSTRIKE 4 — SPRINT HALTED. Surface to human with logs + diff.`
+						: strikes === 3
+							? `\nSTRIKE 3 on ${current.id} — pull in architect before builder retry.`
+							: `\nStrike ${strikes}/4 on ${current.id} — task reset to builder; relaunch builder with the failure output.`;
+				}
+				saveState(paths, state);
+			}
 			return {
 				content: [
 					{
 						type: "text",
-						text: result.ok
-							? `✅ verify green (${result.steps.map((s) => s.name).join(", ")})`
-							: `❌ verify failed at "${result.failedStep}"`,
+						text:
+							(result.ok
+								? `✅ verify green (${result.steps.map((s) => s.name).join(", ")})`
+								: `❌ verify failed at "${result.failedStep}"`) + stateNote,
 					},
 				],
 				details: result,
@@ -454,6 +619,7 @@ export default function (pi: ExtensionAPI) {
 				storyRef: task.story,
 				gateSummary,
 				files: task.files,
+				...(state.caseNumber ? { caseNumber: state.caseNumber } : {}),
 			});
 			task.commitSha = sha;
 			transition(task, "done");
@@ -499,18 +665,12 @@ export default function (pi: ExtensionAPI) {
 			if (state.phase !== "final-review") {
 				throw new Error(`cannot merge: phase is ${state.phase}, expected final-review`);
 			}
+			// Consolidate task logs first so the merge diff shows sprint-tasks.log
+			// instead of N individual files (same as /sprint:approve-close).
+			await runConsolidateLogs(pi, paths, state);
 			// Commit phase=closed to the sprint branch before merging,
 			// so the sprint artifacts are complete in the branch history.
-			state.phase = "closed";
-			saveState(paths, state);
-			const { stdout: addOut, code: addCode, stderr: addErr } = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
-			void addOut;
-			if (addCode !== 0) throw new Error(`git add sprint artifacts failed: ${addErr}`);
-			const diffResult = await pi.exec("git", ["diff", "--cached", "--quiet"]);
-			if (diffResult.code !== 0) {
-				const closeCommit = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
-				if (closeCommit.code !== 0) throw new Error(`close commit failed: ${closeCommit.stderr}`);
-			}
+			await commitClosedState(pi, state, paths);
 			const sha = await mergeSprint(pi, state.branch);
 			return { content: [{ type: "text", text: `merged ${state.branch} → main @ ${sha}` }], details: { sha } };
 		},
@@ -615,15 +775,7 @@ export default function (pi: ExtensionAPI) {
 
 				ctx.ui.notify("Merging sprint branch into main locally…", "info");
 				// Commit phase=closed to sprint branch before merging.
-				state.phase = "closed";
-				saveState(paths, state);
-				const { code: ac, stderr: ae } = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
-				if (ac !== 0) throw new Error(`git add failed: ${ae}`);
-				const df = await pi.exec("git", ["diff", "--cached", "--quiet"]);
-				if (df.code !== 0) {
-					const cc = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
-					if (cc.code !== 0) throw new Error(`close commit failed: ${cc.stderr}`);
-				}
+				await commitClosedState(pi, state, paths);
 				const sha = await mergeSprint(pi, state.branch);
 				ctx.ui.notify(`Sprint closed. Merged ${state.branch} → main @ ${sha.slice(0, 7)}.`, "info");
 				return;
@@ -646,21 +798,13 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Commit phase=closed to sprint branch before pushing/PR.
-			state.phase = "closed";
-			saveState(paths, state);
-			const { code: pac, stderr: pae } = await pi.exec("git", ["add", "--", `${SPRINT_ROOT_REL}/${state.name}`]);
-			if (pac !== 0) throw new Error(`git add failed: ${pae}`);
-			const pdf = await pi.exec("git", ["diff", "--cached", "--quiet"]);
-			if (pdf.code !== 0) {
-				const pcc = await pi.exec("git", ["commit", "-m", "close: finalize sprint-state.json (phase=closed)"]);
-				if (pcc.code !== 0) throw new Error(`close commit failed: ${pcc.stderr}`);
-			}
+			await commitClosedState(pi, state, paths);
 			ctx.ui.notify(`Pushing ${state.branch} to origin…`, "info");
 			await pushBranch(pi, state.branch);
 
 			const goal = readSprintGoal(paths.sprintLog);
 			void goal; // goal is in the PR body; keep the title terse
-			const prTitle = sprintNameToTitle(state.name, undefined);
+			const prTitle = sprintNameToTitle(state.name, state.caseNumber);
 
 			const taskLines = state.tasks
 				.filter((t) => t.gate === "done")
@@ -688,11 +832,34 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("sprint:unhalt", {
+		description: "Clear the halted flag after a human-approved fix. Pass a brief description of what was fixed.",
+		handler: async (args, ctx) => {
+			const { state, paths } = requireActive(ctx.cwd);
+			if (!state.halted) {
+				ctx.ui.notify("Sprint is not halted.", "warning");
+				return;
+			}
+			const reason = (args || "").trim();
+			if (!reason) {
+				ctx.ui.notify("Usage: /sprint:unhalt <what was fixed>. A reason is required.", "error");
+				return;
+			}
+			const haltSource = state.halted.source ?? "manual";
+			const taskReset = performUnhalt(state, paths, haltSource === "strike-4");
+			appendSprintLog(paths, `unhalt (command): ${reason}${taskReset ? ` (reset ${taskReset} to builder)` : ""}`);
+			ctx.ui.notify(
+				`Sprint unhalted.${taskReset ? ` Task ${taskReset} reset to builder — re-run the gate chain.` : ""} Reason: ${reason}`,
+				"info",
+			);
+		},
+	});
+
 	pi.registerCommand("sprint:halt", {
 		description: "Manually halt the sprint (equivalent to strike 4)",
 		handler: async (args, ctx) => {
 			const { state, paths } = requireActive(ctx.cwd);
-			state.halted = { reason: args || "manual halt", at: new Date().toISOString() };
+			state.halted = { reason: args || "manual halt", at: new Date().toISOString(), source: "manual" };
 			saveState(paths, state);
 			appendSprintLog(paths, `manual HALT: ${state.halted.reason}`);
 			console.error(`[sprint] HALT: ${state.halted.reason}`);

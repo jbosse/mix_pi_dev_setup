@@ -9,12 +9,15 @@ Running `mix pi_dev_setup` in your Phoenix project will:
 - Scaffold **`.pi/`** — Pi configuration, agents, chains, skills, and the `sprint-orchestrator` extension
 - Scaffold **`docs/`** — living architecture, styleguide, glossary, orchestration process, and project memory docs
 - Create **`SPEC.md`** — product specification scaffold
+- Create **`spawn-agent`** / **`remove-agent`** — worktree lifecycle scripts for parallel Pi sessions
 - Create **`.credo.exs`**, **`.dialyzer_ignore.exs`**, **`.sobelow-conf`** — static analysis config
 - Create **`priv/plts/.gitkeep`** — Dialyzer PLT cache directory
 - Patch **`mix.exs`**:
   - Adds `dialyzer:` config (PLT paths + flags)
   - Adds `:credo`, `:dialyxir`, `:sobelow`, `:mox` to `deps/0`
-  - Expands the `precommit:` alias to a full 9-step verification pipeline
+  - Expands the `precommit:` alias to the full verification pipeline (the sprint
+    orchestrator's `verify_run` gate executes `mix precommit`, so the alias is
+    the single source of truth for verification)
 
 All generated content is automatically tailored to your app — module names like `MyApp` and `MyAppWeb` are derived from your project's `mix.exs`, no arguments needed.
 
@@ -138,3 +141,28 @@ See `docs/ORCHESTRATION.md` in your project after running the generator for the 
 - An existing Phoenix 1.8 project
 - [Pi.dev](https://pi.dev) installed
 - `pi-subagents` (`pi install npm:pi-subagents`)
+
+## Development (this repo)
+
+**`priv/templates/` is the single source of truth.** The live copies at the
+repo root (`.pi/`, `docs/`, `SPEC.md`, `spawn-agent`, …) are generated
+artifacts kept around for inspection and dogfooding — never edit them
+directly. The workflow is:
+
+```bash
+# 1. edit files under priv/templates/
+# 2. regenerate the live copies
+mix pi_dev.sync
+# 3. commit both
+```
+
+Templates use explicit placeholder tokens that the generator substitutes with
+the target app's names: `__APP_MODULE__`, `__APP_WEB_MODULE__`,
+`__APP_NAME__`, `__APP_WEB_NAME__`, `__GENERATED_DATE__`.
+
+CI enforces all of this:
+
+- `mix test` — unit tests for the mix.exs patcher and template machinery
+- `mix pi_dev.sync --check` — fails if live copies drift from templates
+- `tsc --noEmit` (via `.github/ts-check/`) — typechecks the sprint-orchestrator
+  extension against the published `@mariozechner/pi-coding-agent` types

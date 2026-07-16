@@ -24,6 +24,7 @@ export interface SprintPaths {
 	reviewerChecklist: string;
 	spec: string;
 	plan: string;
+	sprintReview: string; // sprint-review.md (committed artifact — consolidates planning docs)
 }
 
 export function sprintPaths(cwd: string, sprintName: string): SprintPaths {
@@ -40,6 +41,7 @@ export function sprintPaths(cwd: string, sprintName: string): SprintPaths {
 		reviewerChecklist: join(root, "reviewer-checklist.md"),
 		spec: join(root, "spec.md"),
 		plan: join(root, "plan.md"),
+		sprintReview: join(root, "sprint-review.md"),
 	};
 }
 

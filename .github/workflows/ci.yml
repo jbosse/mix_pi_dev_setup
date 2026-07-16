@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: mix test + template drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Run tests
+        run: mix test
+
+      - name: Check live copies match priv/templates
+        run: mix pi_dev.sync --check
+
+  typecheck:
+    name: typecheck sprint-orchestrator extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/ts-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pi-coding-agent types
+        run: npm install --no-audit --no-fund
+
+      - name: tsc --noEmit
+        run: npx tsc -p tsconfig.json

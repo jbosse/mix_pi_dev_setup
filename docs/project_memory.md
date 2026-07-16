@@ -6,7 +6,7 @@ _Append-only. Newest sprint at the top._
 
 ## Sprint: (none yet — initial state)
 
-**Recorded:** 2026-06-11
+**Recorded:** __GENERATED_DATE__
 **Branch:** `main`
 
 ### What exists
@@ -26,14 +26,14 @@ _Append-only. Newest sprint at the top._
 - `PiDevSetup.Config` centralized config module.
 - Any ADRs.
 - `.env.example`.
-- Full `mix precommit` alias.
+- Full `mix precommit` alias (needs credo, dialyxir, sobelow deps added).
 
 ### Key process decisions (captured in styleguide / glossary / architecture)
 
 - **Architectural layering**: Phoenix contexts with fixed internal shape (`commands/`, `queries/`, `ports/`, `adapters/`, `contracts/`, `errors/`).
 - **CQS**: pragmatic — Commands required for ≥ 2 tables, cross-port, or named business operation; trivial CRUD stays as context functions.
 - **Testing**: ExUnit with idiomatic `describe "func/arity"` structure + BDD phrasing in test names (outcome-first, "when" clause). Mox + hand-written fakes. Ecto sandbox against Postgres. Integration test required per Command.
-- **Verification gate**: nine-step `mix precommit` pipeline (deps → compile warnings-as-errors → format → ecto migrate → test → assets).
+- **Verification gate**: nine-step `mix precommit` pipeline (deps → compile warnings-as-errors → format → credo strict → sobelow → ecto migrate → dialyzer → test → assets).
 - **Errors**: hybrid — `{:ok, _} | {:error, struct}` tuples with `defexception` structs under `<context>/errors/`. Adapters wrap vendor exceptions; domain never sees them.
 - **Config**: `PiDevSetup.Config` + `NimbleOptions` schemas, validated at boot (to be established).
 - **Boundary validation**: symmetric `Ecto.Changeset` + embedded schemas inbound and outbound. One Contract module per external surface.
