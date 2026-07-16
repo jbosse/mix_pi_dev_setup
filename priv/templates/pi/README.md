@@ -16,7 +16,7 @@ Each non-parent role runs as a fresh child Pi process via [`pi-subagents`](https
 pi install npm:pi-subagents
 ```
 
-Chains live in [`chains/`](./chains/). The dev loop uses [`task-gates.chain.md`](./chains/task-gates.chain.md) (builder → tester → reviewer → security).
+Chains live in [`chains/`](./chains/). The autonomous dev loop uses [`task-gates.chain.md`](./chains/task-gates.chain.md) (builder → tester → reviewer → security); the paired dev loop uses [`review-gates.chain.md`](./chains/review-gates.chain.md) (reviewer → security — builder/tester gates are passed by the pairing session).
 
 | Agent | Runtime | Phase | Writes? |
 |---|---|---|---|
@@ -38,6 +38,8 @@ Skill files remain the source of truth for each role's rules. Agent shims inject
 | Skill | Phase | Owns gate |
 |---|---|---|
 | [`orchestrator`](./skills/orchestrator/SKILL.md) | All (parent) | — |
+| [`pair-sprint`](./skills/pair-sprint/SKILL.md) | All (parent) — paired dev loop | — |
+| [`pair-programmer`](./skills/pair-programmer/SKILL.md) | Dev (parent) or standalone | — |
 | [`planning-interview`](./skills/planning-interview/SKILL.md) | Planning kickoff (parent) | — |
 | [`product-owner`](./skills/product-owner/SKILL.md) | Planning | — |
 | [`architect`](./skills/architect/SKILL.md) | Planning + Final | Final architectural review |

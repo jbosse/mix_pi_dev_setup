@@ -104,11 +104,12 @@ priv/plts/.gitkeep
   settings-lmstudio.json.example
   agents/          architect, architect-final, builder, pm, product-owner,
                    reviewer, security, tester, tester-planning
-  chains/          task-gates.chain.md
+  chains/          task-gates.chain.md, review-gates.chain.md
   extensions/      sprint-orchestrator/ (TypeScript — git, guards, state machine,
                    verify pipeline, tools, commands)
-  skills/          architect, builder, orchestrator, planning-interview, pm,
-                   product-owner, reviewer, security, styleguide-check, tester
+  skills/          architect, builder, orchestrator, pair-programmer, pair-sprint,
+                   planning-interview, pm, product-owner, reviewer, security,
+                   styleguide-check, tester
 
 docs/
   ORCHESTRATION.md
@@ -134,6 +135,18 @@ The tooling implements an AI-assisted Scrum-style sprint workflow:
 ```
 
 See `docs/ORCHESTRATION.md` in your project after running the generator for the full process.
+
+### Pair-programming modes
+
+When you'd rather build alongside the agent than watch it go:
+
+- **`/skill:pair-sprint`** — the same sprint lifecycle, but every dev task is
+  ping-pong pair-programmed with you in the parent session (one side writes a
+  failing test, the other makes it green, swap). Reviewer and Security still
+  run as fresh subagents, and verify + single-commit-per-task are unchanged.
+- **`/skill:pair-programmer`** — the ping-pong protocol standalone, on any
+  branch, with no sprint ceremony. You own git; the agent proposes commit
+  points after `mix precommit` is green.
 
 ## Requirements
 
